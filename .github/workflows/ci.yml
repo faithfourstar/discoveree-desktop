@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Licence present
+        run: test -f LICENSE.md && grep -q "Functional Source License" LICENSE.md
+
+      - name: Set up Node
+        if: ${{ hashFiles('package.json') != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        if: ${{ hashFiles('package.json') != '' }}
+        run: npm ci
+
+      - name: Typecheck
+        if: ${{ hashFiles('package.json') != '' }}
+        run: npm run check
+
+      - name: Test
+        if: ${{ hashFiles('package.json') != '' }}
+        run: npm test
