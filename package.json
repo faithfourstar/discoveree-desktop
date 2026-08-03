@@ -11,20 +11,29 @@
   "scripts": {
     "check": "tsc --noEmit",
     "test": "vitest run",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "dev:server": "tsx watch server/main.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@electric-sql/pglite": "0.5.4",
+    "@google/genai": "^2.15.0",
     "drizzle-orm": "0.45.2",
     "drizzle-zod": "0.8.3",
     "env-paths": "^3.0.0",
+    "express": "^4.22.2",
+    "openai": "^7.3.0",
     "pg": "^8.22.0",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
+    "@types/express": "^4.17.25",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.20.3",
+    "@types/supertest": "^7.2.1",
     "drizzle-kit": "0.31.10",
+    "supertest": "^7.2.2",
     "tsx": "^4.23.5",
     "typescript": "^5.9.3",
     "vitest": "^3.2.7"

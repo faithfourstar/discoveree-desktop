@@ -1,5 +1,5 @@
 {
-  "id": "c6d7e094-76c1-4633-bcfd-03c61243e6ad",
+  "id": "41051e11-dadc-4184-bb4b-a6b4b131860a",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -689,6 +689,13 @@
           "notNull": false,
           "default": "'competitor'"
         },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'tracked'"
+        },
         "description": {
           "name": "description",
           "type": "text",
@@ -898,25 +905,6 @@
         "parent_company": {
           "name": "parent_company",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "battlecard_messages": {
-          "name": "battlecard_messages",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "battlecard_ready_flag": {
-          "name": "battlecard_ready_flag",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false,
-          "default": false
-        },
-        "battlecard_output": {
-          "name": "battlecard_output",
-          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },

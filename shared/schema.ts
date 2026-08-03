@@ -812,6 +812,11 @@ export const competitorProfiles = pgTable("competitor_profiles", {
   competitorUrl: text("competitor_url"),
   competitorUrlSource: text("competitor_url_source").default("ai-discovered"), // manual, ai-discovered, review-site
   sourceCategory: text("source_category").default("competitor"), // competitor or adjacent
+  // Lifecycle status (spec 2.4 review-before-save gate): "proposed" rows are
+  // drafts awaiting human accept — excluded from the default list, the changes
+  // feed, and scheduled agent runs. POST /api/competitors creates "proposed"
+  // explicitly; the default stays "tracked" so baseline seeds/imports are sane.
+  status: text("status").notNull().default("tracked"), // proposed | tracked
   description: text("description"),
   descriptionSourceUrl: text("description_source_url"),
   helpCenterUrl: text("help_center_url"), // URL to competitor's help center/documentation
@@ -855,10 +860,8 @@ export const competitorProfiles = pgTable("competitor_profiles", {
 
   parentCompany: text("parent_company"), // Parent/owning company name if different from product name (e.g. "Sage" for AutoEntry)
 
-  // Battlecard conversational assistant
-  battlecardMessages: jsonb("battlecard_messages"), // Array of {role, content} conversation history
-  battlecardReadyFlag: boolean("battlecard_ready_flag").default(false), // true when AI signals BATTLECARD_READY
-  battlecardOutput: jsonb("battlecard_output"), // {featureComparison[], pricingComparison, objections[], winningMessages[], summary}
+  // Battlecard columns (battlecardMessages/ReadyFlag/Output) were DROPPED for
+  // desktop (ADR 002 risk 8 ruling): battlecards are CUT — MCP replaces them.
 
   // JTBD & Persona Coverage mapping — AI-generated, cached on-demand
   featurePersonaMapping: jsonb("feature_persona_mapping"), // { groups: [{jtbd, personas, features: [{name, description, coverage}]}], gaps: [{jtbd, personas}], generatedAt }
@@ -994,47 +997,6 @@ export const competitorThreatLevelHistory = pgTable("competitor_threat_level_his
 export const insertCompetitorThreatLevelHistorySchema = createInsertSchema(competitorThreatLevelHistory).omit({ id: true, changedAt: true });
 export type InsertCompetitorThreatLevelHistory = z.infer<typeof insertCompetitorThreatLevelHistorySchema>;
 export type CompetitorThreatLevelHistory = typeof competitorThreatLevelHistory.$inferSelect;
-
-export const battlecardMessageSchema = z.object({
-  role: z.enum(["user", "assistant"]),
-  content: z.string(),
-});
-export type BattlecardMessage = z.infer<typeof battlecardMessageSchema>;
-
-export const battlecardFeatureComparisonSchema = z.object({
-  feature: z.string(),
-  ours: z.string(),
-  theirs: z.string(),
-  advantage: z.enum(["ours", "theirs", "neutral"]),
-});
-
-export const battlecardPricingComparisonSchema = z.object({
-  ourSummary: z.string(),
-  theirSummary: z.string(),
-  ourAdvantages: z.array(z.string()),
-  theirAdvantages: z.array(z.string()),
-  talkingPoints: z.array(z.string()),
-});
-
-export const battlecardObjectionSchema = z.object({
-  objection: z.string(),
-  response: z.string(),
-});
-
-export const battlecardOutputSchema = z.object({
-  featureComparison: z.array(battlecardFeatureComparisonSchema),
-  pricingComparison: battlecardPricingComparisonSchema,
-  objections: z.array(battlecardObjectionSchema),
-  winningMessages: z.array(z.string()),
-  summary: z.string(),
-});
-export type BattlecardOutput = z.infer<typeof battlecardOutputSchema>;
-
-export interface BattlecardState {
-  battlecardMessages: BattlecardMessage[];
-  battlecardReadyFlag: boolean;
-  battlecardOutput: BattlecardOutput | null;
-}
 
 export const competitiveAnalyses = pgTable("competitive_analyses", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
