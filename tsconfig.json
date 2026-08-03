@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": { "@shared/*": ["shared/*.ts", "shared/*"] },
+    "types": ["node"]
+  },
+  "include": ["shared", "server"],
+  "exclude": ["client", "node_modules"]
+}

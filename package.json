@@ -1,0 +1,32 @@
+{
+  "name": "discoveree-desktop",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Discoveree Desktop — a local, agent-maintained context layer for your product that any AI tool can connect to.",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.4",
+    "drizzle-orm": "0.45.2",
+    "drizzle-zod": "0.8.3",
+    "env-paths": "^3.0.0",
+    "pg": "^8.22.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.20.3",
+    "drizzle-kit": "0.31.10",
+    "tsx": "^4.23.5",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}
