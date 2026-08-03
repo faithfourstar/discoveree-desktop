@@ -93,6 +93,22 @@ Enterprise and niche products often have little public review/competitor data; t
 
 Source kinds (public web / internal document / employee report / CRM record / call transcript) are distinguished in provenance and confidence handling. For thin-public-data products, internal evidence is the primary source, not the fallback — the add-competitor flow should degrade gracefully into "upload what you have" rather than returning empty.
 
+## 4b. Commercial Model module (new build — decided 4 Aug 2026)
+
+A context section the SaaS never properly supported: **how the product/business makes money.** Owner-identified gap; to be designed and built as a first-class module (schema first, then agents, then surface). Scope:
+
+- **Pricing model** — tiers, price points, billing motion (self-serve/sales-led), discounting norms.
+- **Distribution channels** — direct, partner, marketplace, etc., each with economics attached.
+- **Profitability/margin** — across channels and customer segments (gross margin structure, cost drivers).
+- **Revenue & usage spread** — concentration across strategic accounts and customer segments; which segments/accounts drive revenue vs usage.
+
+Design notes:
+- **Consumers:** roadmap review gains revenue-weighted scoring ("this initiative serves the segment that is 60% of revenue"); deep dives and Thought Partner gain commercial grounding; MCP serves it to the customer's AI for pricing/packaging/deal questions.
+- **Sources:** manual/structured entry first (the owner knows these numbers); later billing (Stripe et al.), CRM (links to §4a CRM ingestion), and analytics connections via the proposal→accept queue.
+- **Sensitivity (open design question):** this is the most confidential context in the product. Local-first is a genuine advantage here, but MCP serving and free reader seats likely need per-module visibility controls (e.g. commercial context excluded from the reader surface by default). Must be answered in the module's design doc.
+- **Onboarding:** gates via a sixth step-2 job (e.g. "Keep our commercial model sharp"); same rule as all modules — unchosen, it doesn't appear.
+- Cross-links: segment definitions shared with Customer Insights (one segment vocabulary, not two).
+
 ## 5. Onboarding (5 steps; answers gate modules)
 
 Current flow (details → LLM keys → billing) is replaced. Billing step is deleted (licence entered at install).
