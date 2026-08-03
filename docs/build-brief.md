@@ -81,6 +81,18 @@ The most-valued feedback feature: judging whether the team is working on the mos
 - **Act:** accepted suggestions are created in the customer's planning tool via outbound sync.
 - **Hard rules:** every suggestion is **evidence-cited** (shows the feedback items / pillar / competitor move behind it) and **human-accepted** — the agent never writes to Jira on its own. New build required: the evaluative agent + weekly report; ingestion and outbound plumbing exist.
 
+## 4a. Internal evidence — uploads and MCP-proposed intel (decided 3 Aug 2026)
+
+Enterprise and niche products often have little public review/competitor data; their richest intel is internal (market research decks, sales-call notes, customer conversations). Two ingestion paths are therefore first-class roadmap items, both reusing the proposal→accept primitive from the competitor gate:
+
+1. **Document upload → extraction agent:** upload competitor/market research (PDF/DOCX/PPTX/TXT/MD — SaaS parsing code exists in routes.ts multer/pdf-parse blocks); an agent extracts competitor facts and proposes merges into profiles with `internal_document` provenance. Belongs to the Sources sprint.
+2. **MCP write surface:** MCP tools (`propose_competitor_intel`, `log_feedback`) so the customer's AI (e.g. Claude reading their Slack) can push intel in. Writes NEVER land directly: they enter a review queue behind the accept gate, provenance recorded ("shared by <person> in <channel>, via Claude"). Belongs to the MCP sprint. This is also the reader-upgrade moment mechanism.
+
+3. **CRM competitive fields:** Salesforce/HubSpot opportunity records routinely carry who the deal is competing against and how the buyer weighed the options (competitor fields, win/loss reasons, deal notes). Two routes, not mutually exclusive: (a) a poll-based CRM connection in the Jira/Linear pattern that proposes competitor-evidence from opportunity data; (b) day one via the MCP write surface — the customer's Claude with a CRM connector proposes intel through the same tools as (2). Win/loss patterns are also prime evidence for the roadmap review ("we lose to Harvey on SSO" is a theme with revenue attached).
+4. **Call recordings:** sales/customer call transcripts (Gong-class tools or uploaded recordings) mined for competitor mentions and buying criteria — the SaaS schema already carries a call-recordings table, so the data model has a head start. Same proposal-queue discipline.
+
+Source kinds (public web / internal document / employee report / CRM record / call transcript) are distinguished in provenance and confidence handling. For thin-public-data products, internal evidence is the primary source, not the fallback — the add-competitor flow should degrade gracefully into "upload what you have" rather than returning empty.
+
 ## 5. Onboarding (5 steps; answers gate modules)
 
 Current flow (details → LLM keys → billing) is replaced. Billing step is deleted (licence entered at install).
