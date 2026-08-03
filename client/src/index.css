@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Discoveree Desktop design tokens — layout direction 2a "Briefing in a shell".
+ * The app chrome (window rail) is dark in BOTH themes; only the content
+ * surface swaps between light and dark. Dark content is a derived theme,
+ * not a naive inversion: the content sits darker than the rail so the
+ * chrome still reads as chrome.
+ */
+:root {
+  /* Chrome — constant across themes */
+  --chrome: #20262e;
+  --chrome-border: #2c333c;
+  --chrome-dot: #3a424c;
+  --rail-icon: #8b95a1;
+  --rail-label: #98a1ac;
+  --rail-active-label: #eaeef2;
+  --rail-active-bg: rgba(255, 255, 255, 0.11);
+
+  /* Teal family */
+  --teal: #10b2a6;
+  --teal-bright: #3ed3c6;
+  --teal-deep: #0e8f86;
+  --teal-dark: #0b6f68;
+  --teal-tint: #e7f6f5;
+
+  /* Semantics */
+  --live: #10b77f;
+  --amber: #f5c34e;
+
+  /* Light content theme */
+  --app: #fcfcfb;
+  --surface: #ffffff;
+  --inset: #fbfcfc;
+  --edge: #eef0f2;
+  --edge-input: #e4e7eb;
+  --edge-btn: #dce1e7;
+  --hairline: #eaecef;
+  --ink: #1d2635;
+  --body: #3a4250;
+  --muted: #63707f;
+  --faint: #98a1ac;
+  --ghost: #b6bec7;
+  --chip: #f1f3f5;
+  --num: #c0c6cd;
+  --label: #a8afb8;
+  --sep: #d5dae0;
+}
+
+.dark {
+  /* Dark content theme — content darker than the rail's #20262E */
+  --app: #14181e;
+  --surface: #1a1f26;
+  --inset: #171c22;
+  --edge: #262c35;
+  --edge-input: #2c333c;
+  --edge-btn: #343c46;
+  --hairline: #262c35;
+  --ink: #e8ecf0;
+  --body: #c2cad3;
+  --muted: #8b95a1;
+  --faint: #6e7885;
+  --ghost: #545e6a;
+  --chip: #242b33;
+  --num: #46505b;
+  --label: #6e7885;
+  --sep: #3a424c;
+
+  /* Teal links and tints need more luminance on dark surfaces */
+  --teal-deep: #34c4b8;
+  --teal-dark: #7fded6;
+  --teal-tint: rgba(16, 178, 166, 0.14);
+
+  --amber: #e3b341;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-app font-sans text-body antialiased;
+}

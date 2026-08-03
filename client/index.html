@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Discoveree</title>
+    <script>
+      // Apply the stored theme before first paint to avoid a flash.
+      (function () {
+        var stored = localStorage.getItem("discoveree-theme");
+        var dark =
+          stored === "dark" ||
+          (stored === null &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
