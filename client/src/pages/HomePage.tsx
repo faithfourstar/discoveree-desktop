@@ -87,7 +87,7 @@ function Briefing({ home }: { home: HomeBriefing }) {
 
 function DayOne({ prompt }: { prompt: DayOnePrompt }) {
   return (
-    <div className="flex flex-1 items-center justify-center px-8">
+    <div className="flex min-h-full items-center justify-center px-8">
       <div className="w-full max-w-[600px]">
         <p className="mb-[26px] text-[23px] leading-[1.45] tracking-[-0.015em] text-ink [text-wrap:pretty]">
           {prompt.lede}

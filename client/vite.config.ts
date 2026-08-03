@@ -11,5 +11,9 @@ export default defineConfig({
   },
   server: {
     port: 5180,
+    // The desktop server binds 127.0.0.1:7317; the SPA talks relative /api.
+    proxy: {
+      "/api": "http://127.0.0.1:7317",
+    },
   },
 });

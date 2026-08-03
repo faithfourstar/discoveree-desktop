@@ -1,15 +1,31 @@
 import { Moon, Sun } from "lucide-react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { moduleRegistry } from "@/modules/registry";
+import { competitorSlug } from "@/mock/competitors";
 import { useAppState } from "@/state/AppStateContext";
 import { useTheme } from "@/state/theme";
+import type { ReactNode } from "react";
 
-function useBreadcrumb(): string {
+function useBreadcrumb(): ReactNode {
   const [location] = useLocation();
-  const { competitor } = useAppState();
+  const { competitors } = useAppState();
 
-  if (location.startsWith("/competitors") && competitor) {
-    return `Competitors · ${competitor.name}`;
+  const objectMatch = /^\/competitors\/([^/]+)/.exec(location);
+  if (objectMatch) {
+    const competitor = Object.values(competitors).find(
+      (candidate) => competitorSlug(candidate.id) === objectMatch[1],
+    );
+    if (competitor) {
+      return (
+        <>
+          <Link href="/competitors" className="hover:text-body">
+            Competitors
+          </Link>{" "}
+          · {competitor.name}
+        </>
+      );
+    }
+    return "Competitors";
   }
   const match = moduleRegistry.find((module) =>
     module.path === "/" ? location === "/" : location.startsWith(module.path),

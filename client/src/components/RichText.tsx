@@ -25,6 +25,16 @@ export function RichText({ value }: { value: RichTextValue }) {
             </span>
           );
         }
+        if (segment.tone === "mono") {
+          return (
+            <span
+              key={index}
+              className="font-mono text-[0.88em] tabular-nums"
+            >
+              {segment.text}
+            </span>
+          );
+        }
         return <span key={index}>{segment.text}</span>;
       })}
     </>

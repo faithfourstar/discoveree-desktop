@@ -9,7 +9,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       <Rail />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
-        <main className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-app">
+        {/*
+          A block-level scroll container: only the content column scrolls;
+          rail, top bar and status footer stay fixed. (The 2a design canvas
+          clipped this area for its fixed-height frames — a live page must
+          scroll.) Pages that centre vertically use min-h-full, not flex-1.
+        */}
+        <main className="min-h-0 flex-1 overflow-y-auto bg-app">
           {children}
         </main>
         <StatusFooter />

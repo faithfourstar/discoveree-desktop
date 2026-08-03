@@ -12,7 +12,17 @@ export function StatusFooter() {
         />
         {footer.local}
       </span>
-      {footer.agents ? <span>{footer.agents}</span> : null}
+      {footer.agents ? (
+        <span className="flex items-center gap-1.5">
+          {footer.agentsLive ? (
+            <span
+              className="h-1.5 w-1.5 animate-pulse rounded-full bg-live"
+              aria-hidden
+            />
+          ) : null}
+          {footer.agents}
+        </span>
+      ) : null}
       {footer.mcp ? <span>{footer.mcp}</span> : null}
       <span>{footer.offline}</span>
       {footer.licence ? (

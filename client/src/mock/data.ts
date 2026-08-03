@@ -1,14 +1,22 @@
+import {
+  initialAddFlow,
+  makeObjects,
+  makeOverview,
+  onboardingProposals,
+} from "./competitors";
 import type {
   AppState,
-  CompetitorObject,
   DayOnePrompt,
   HomeBriefing,
+  MockScenarioKey,
 } from "./types";
 
 /**
- * Mock datasets for the two shell states in the 2a design reference:
- * the populated briefing and the day-one prompt. Content matches the mock
- * in docs/design/layout-direction-2a.html.
+ * Mock datasets for the shell states. Content matches the mock in
+ * docs/design/layout-direction-2a.html plus the competitors-module-spec
+ * scenarios. `makeAppState` returns a fresh copy per call so in-session
+ * mutations (mock agent runs, accepted proposals) never leak across the
+ * `?state=` switch.
  */
 
 const briefingHome: HomeBriefing = {
@@ -112,108 +120,97 @@ const dayOnePrompt: DayOnePrompt = {
     "Roughly four minutes: help centre, releases and changelog get read, then I’ll propose competitors for you to keep or drop. Step 1 of 5.",
 };
 
-const mixpanel: CompetitorObject = {
-  id: "competitor:mixpanel",
-  name: "Mixpanel",
-  classification: "DIRECT",
-  domain: "mixpanel.com",
-  sentiment: 66,
-  reviewCount: 107,
-  verifiedAgo: "4 h ago",
-  summary:
-    "Two things changed since you last looked. Session replay is now on the pricing page, and two G2 reviews complain about warehouse sync limits.",
-  theyBeatYouOn: [
-    "Warehouse-native modelling",
-    "Free tier depth",
-    "Session replay",
-  ],
-  youBeatThemOn: [
-    "Time to first dashboard",
-    "Governance",
-    "Support responsiveness",
-  ],
-  openThread: {
-    id: "thread:mixpanel-warehouse-native",
-    status: "open",
-    question: "Could we match warehouse-native modelling in two quarters?",
-    answer:
-      "Your inventory already covers ingestion and transform scheduling. What’s missing is reverse-ETL and a semantic layer, and both appear in your feedback under a different name.",
-    evidence: [
-      {
-        id: "ev:thread-features",
-        kind: "feature-inventory",
-        label: "142 features",
-        count: 142,
-        objectId: "product:feature-inventory",
-      },
-      {
-        id: "ev:thread-theme",
-        kind: "theme",
-        label: "theme: data plumbing",
-        objectId: "theme:data-plumbing",
-      },
-      {
-        id: "ev:thread-pillar",
-        kind: "pillar",
-        label: "pillar 2",
-        objectId: "pillar:2",
-      },
-    ],
-    fileUnderLabel: "File under Mixpanel",
-    keepAskingLabel: "Keep asking",
-  },
-  filedThreads: [
-    {
-      id: "thread:mixpanel-replay-decision",
-      title: "Replay: buy, partner or ignore",
-      filedOn: "28 Jul",
+/** Populated base — the "briefing in a shell" mock. */
+function makePopulatedState(scenario: MockScenarioKey): AppState {
+  return {
+    productName: "Analytics Platform Pro",
+    scenario: "briefing",
+    mockScenario: scenario,
+    modules: {
+      home: { enabled: true, populated: true },
+      competitors: { enabled: true, populated: true },
+      customers: { enabled: true, populated: true },
+      strategy: { enabled: true, populated: true },
+      roadmap: { enabled: true, populated: true, badge: 3 },
+      connections: { enabled: true, populated: true },
+      settings: { enabled: true, populated: true },
     },
-  ],
-};
+    footer: {
+      local: "Local · 42 MB on disk",
+      agents: "Agents idle · next run 21:00",
+      mcp: "MCP serving :7317",
+      offline: "Works offline",
+      licence: "Licence to 14 Mar 2027",
+    },
+    home: briefingHome,
+    dayOne: null,
+    competitorsOverview: makeOverview("briefing"),
+    competitors: {},
+    competitorAddFlow: { ...initialAddFlow },
+    onboardingProposals: null,
+    agentsPaused: false,
+    justVerifiedId: null,
+  };
+}
 
-/** Populated state — the "briefing in a shell" mock. */
-export const briefingState: AppState = {
-  productName: "Analytics Platform Pro",
-  scenario: "briefing",
-  modules: {
-    home: { enabled: true, populated: true },
-    competitors: { enabled: true, populated: true },
-    customers: { enabled: true, populated: true },
-    strategy: { enabled: true, populated: true },
-    roadmap: { enabled: true, populated: true, badge: 3 },
-    connections: { enabled: true, populated: true },
-    settings: { enabled: true, populated: true },
-  },
-  footer: {
-    local: "Local · 42 MB on disk",
-    agents: "Agents idle · next run 21:00",
-    mcp: "MCP serving :7317",
-    offline: "Works offline",
-    licence: "Licence to 14 Mar 2027",
-  },
-  home: briefingHome,
-  dayOne: null,
-  competitor: mixpanel,
-};
+/** Day-one base — chosen modules present but dimmed; the rest absent. */
+function makeDayOneState(scenario: MockScenarioKey): AppState {
+  return {
+    productName: "Discoveree",
+    scenario: "day-one",
+    mockScenario: scenario,
+    modules: {
+      home: { enabled: true, populated: true },
+      competitors: { enabled: true, populated: false },
+      customers: { enabled: false, populated: false },
+      strategy: { enabled: true, populated: false },
+      roadmap: { enabled: false, populated: false },
+      connections: { enabled: true, populated: true },
+      settings: { enabled: true, populated: true },
+    },
+    footer: {
+      local: "Local · nothing sent anywhere",
+      offline: "Works offline",
+    },
+    home: null,
+    dayOne: dayOnePrompt,
+    competitorsOverview: null,
+    competitors: {},
+    competitorAddFlow: { ...initialAddFlow },
+    onboardingProposals: null,
+    agentsPaused: false,
+    justVerifiedId: null,
+  };
+}
 
-/** Day-one state — chosen modules present but dimmed; the rest absent. */
-export const dayOneState: AppState = {
-  productName: "Discoveree",
-  scenario: "day-one",
-  modules: {
-    home: { enabled: true, populated: true },
-    competitors: { enabled: true, populated: false },
-    customers: { enabled: false, populated: false },
-    strategy: { enabled: true, populated: false },
-    roadmap: { enabled: false, populated: false },
-    connections: { enabled: true, populated: true },
-    settings: { enabled: true, populated: true },
-  },
-  footer: {
-    local: "Local · nothing sent anywhere",
-    offline: "Works offline",
-  },
-  home: null,
-  dayOne: dayOnePrompt,
-  competitor: null,
-};
+export function makeAppState(scenario: MockScenarioKey): AppState {
+  if (scenario === "day-one") {
+    return makeDayOneState(scenario);
+  }
+  if (scenario === "proposals") {
+    const state = makeDayOneState(scenario);
+    state.onboardingProposals = [...onboardingProposals];
+    return state;
+  }
+
+  const state = makePopulatedState(scenario);
+  if (scenario === "many") {
+    state.competitorsOverview = makeOverview("many");
+  } else if (scenario === "quiet") {
+    state.competitorsOverview = makeOverview("quiet");
+  } else if (scenario === "no-search-key") {
+    state.competitorsOverview = makeOverview("briefing", {
+      searchKeyMissing: true,
+    });
+  } else if (scenario === "no-llm-key") {
+    state.agentsPaused = true;
+    state.footer = { ...state.footer, agents: "Agents paused · no LLM key" };
+  }
+  if (state.competitorsOverview) {
+    state.competitors = makeObjects(state.competitorsOverview.rows);
+  }
+  return state;
+}
+
+/** Populated state — kept as the default context value. */
+export const briefingState: AppState = makeAppState("briefing");

@@ -85,3 +85,21 @@ body,
 body {
   @apply bg-app font-sans text-body antialiased;
 }
+
+/*
+ * A single 600 ms background tint fade (teal at 5%) when a refresh agent
+ * finishes while the user is on the page — draws the eye once, no
+ * persistent highlight (competitors spec 4.3).
+ */
+@keyframes tint-fade {
+  from {
+    background-color: rgba(16, 178, 166, 0.05);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+.tint-fade {
+  animation: tint-fade 600ms ease-out forwards;
+}

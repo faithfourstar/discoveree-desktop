@@ -1,6 +1,7 @@
 import { Route, Switch } from "wouter";
 import { AppShell } from "@/components/shell/AppShell";
-import { CompetitorsPage } from "@/pages/CompetitorsPage";
+import { CompetitorObjectPage } from "@/pages/CompetitorObjectPage";
+import { CompetitorsOverviewPage } from "@/pages/CompetitorsOverviewPage";
 import { HomePage } from "@/pages/HomePage";
 import {
   ConnectionsPage,
@@ -18,7 +19,8 @@ export function App() {
       <AppShell>
         <Switch>
           <Route path="/" component={HomePage} />
-          <Route path="/competitors" component={CompetitorsPage} />
+          <Route path="/competitors" component={CompetitorsOverviewPage} />
+          <Route path="/competitors/:id" component={CompetitorObjectPage} />
           <Route path="/customers" component={CustomersPage} />
           <Route path="/strategy" component={StrategyPage} />
           <Route path="/roadmap" component={RoadmapPage} />

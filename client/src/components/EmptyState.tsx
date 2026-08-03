@@ -4,7 +4,7 @@
  */
 export function EmptyState({ line }: { line: string }) {
   return (
-    <div className="flex flex-1 items-center justify-center px-8">
+    <div className="flex min-h-full items-center justify-center px-8">
       <p className="max-w-[600px] text-center text-[15px] leading-relaxed text-muted">
         {line}
       </p>

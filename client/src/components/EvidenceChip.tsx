@@ -3,11 +3,22 @@ import type { EvidenceRef } from "@/mock/types";
 
 /** A single evidence citation chip — mono, quiet, always present. */
 export function EvidenceChip({ evidence }: { evidence: EvidenceRef }) {
-  return (
-    <span className="whitespace-nowrap rounded-[5px] bg-chip px-[7px] py-1 font-mono text-[10.5px] font-medium text-muted">
-      {evidence.label}
-    </span>
-  );
+  const className =
+    "whitespace-nowrap rounded-[5px] bg-chip px-[7px] py-1 font-mono text-[10.5px] font-medium text-muted";
+  if (evidence.href) {
+    return (
+      <a
+        href={evidence.href}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(event) => event.stopPropagation()}
+        className={`${className} hover:text-teal-deep hover:underline`}
+      >
+        {evidence.label}
+      </a>
+    );
+  }
+  return <span className={className}>{evidence.label}</span>;
 }
 
 /** The evidence row a briefing item or thread carries beneath its prose. */
