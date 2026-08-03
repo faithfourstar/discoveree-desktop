@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"><style>body{margin:0;background:#f0eee9;font-family:Inter,system-ui,sans-serif}a{color:#0e8f86}a:hover{color:#0b6f68}.dv-turn{padding:40px 44px 32px;border-bottom:1px solid rgba(0,0,0,.08);scroll-margin-top:16px}.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 20px}.dv-tid{font:600 10px 'JetBrains Mono',monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none}.dv-tname{font:600 13px/1.2 Inter,sans-serif;color:#1a1a1a}.dv-opts{display:flex;flex-wrap:wrap;gap:36px;align-items:flex-start}.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}.dv-oid{font:600 10.5px 'JetBrains Mono',monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none}.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 Inter,sans-serif;color:rgba(0,0,0,.55)}.dv-card{max-width:100%;background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06);overflow:hidden}.dv-opt:target .dv-oid{background:#10B2A6;color:#fff}.dv-next{margin:22px 0 0;font:12px/1.5 Inter,sans-serif;color:rgba(0,0,0,.5)}</style></helmet>
+<section class="dv-turn" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Combining <a class="dv-oid" href="#1b">1b</a>'s briefing column with <a class="dv-oid" href="#1c">1c</a>'s desktop shell and labelled nav</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="2a">
+<div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a><span><strong style="font-weight:600;color:#1a1a1a">Briefing in a shell</strong> · dark app chrome, 7-item labelled rail, single centred column of prose. Rail glyphs are placeholders for your lucide set.</span></div>
+
+<div class="dv-card" style="width:1440px">
+<div style="height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;background:#20262E;border-bottom:1px solid #2C333C"><span style="width:11px;height:11px;border-radius:50%;background:#3A424C"></span><span style="width:11px;height:11px;border-radius:50%;background:#3A424C"></span><span style="width:11px;height:11px;border-radius:50%;background:#3A424C"></span><span style="margin-left:10px;font:500 11px/1 Inter,sans-serif;color:#7C8794">Discoveree — Analytics Platform Pro</span></div>
+<div style="display:flex;height:866px;background:#FCFCFB">
+
+  <div style="width:84px;flex:none;background:#20262E;display:flex;flex-direction:column;align-items:center;padding:14px 8px;gap:3px">
+    <div style="width:26px;height:26px;border-radius:7px;background:#10B2A6;margin-bottom:14px"></div>
+    <div style="width:100%;padding:9px 0 8px;border-radius:9px;background:rgba(255,255,255,.11);display:flex;flex-direction:column;align-items:center;gap:7px"><span style="width:14px;height:14px;border-radius:50%;background:#3ED3C6"></span><span style="font:600 9.5px/1.1 Inter,sans-serif;color:#EAEEF2;text-align:center">Home</span></div>
+    <div style="width:100%;padding:9px 0 8px;border-radius:9px;display:flex;flex-direction:column;align-items:center;gap:7px"><span style="position:relative;width:18px;height:14px"><span style="position:absolute;left:0;top:1px;width:12px;height:12px;border-radius:50%;border:1.5px solid #8B95A1"></span><span style="position:absolute;right:0;top:1px;width:12px;height:12px;border-radius:50%;border:1.5px solid #8B95A1"></span></span><span style="font:500 9.5px/1.1 Inter,sans-serif;color:#98A1AC;text-align:center">Competitors</span></div>
+    <div style="width:100%;padding:9px 0 8px;border-radius:9px;display:flex;flex-direction:column;align-items:center;gap:7px"><span style="display:flex;align-items:flex-end;gap:2px;height:14px"><span style="width:5px;height:9px;border-radius:2px;background:#8B95A1"></span><span style="width:5px;height:14px;border-radius:2px;background:#8B95A1"></span><span style="width:5px;height:6px;border-radius:2px;background:#8B95A1"></span></span><span style="font:500 9.5px/1.1 Inter,sans-serif;color:#98A1AC;text-align:center">Customers</span></div>
+    <div style="width:100%;padding:9px 0 8px;border-radius:9px;display:flex;flex-direction:column;align-items:center;gap:7px"><span style="width:13px;height:13px;background:#8B95A1;transform:rotate(45deg);border-radius:2px"></span><span style="font:500 9.5px/1.1 Inter,sans-serif;color:#98A1AC;text-align:center">Strategy</span></div>
+    <div style="width:100%;padding:9px 0 8px;border-radius:9px;display:flex;flex-direction:column;align-items:center;gap:7px;position:relative"><span style="display:flex;flex-direction:column;gap:3px;width:16px"><span style="height:3px;border-radius:2px;background:#8B95A1"></span><span style="height:3px;width:11px;border-radius:2px;background:#8B95A1"></span><span style="height:3px;width:14px;border-radius:2px;background:#8B95A1"></span></span><span style="font:500 9.5px/1.1 Inter,sans-serif;color:#98A1AC;text-align:center">Roadmap</span><span style="position:absolute;top:5px;right:11px;min-width:15px;height:15px;border-radius:8px;background:#10B2A6;display:flex;align-items:center;justify-content:center;font:600 9px/1 'JetBrains Mono',monospace;color:#fff">3</span></div>
+    <div style="width:100%;padding:9px 0 8px;border-radius:9px;display:flex;flex-direction:column;align-items:center;gap:7px"><span style="display:flex;align-items:center;height:14px"><span style="width:6px;height:6px;border-radius:2px;border:1.5px solid #8B95A1"></span><span style="width:5px;height:1.5px;background:#8B95A1"></span><span style="width:6px;height:6px;border-radius:2px;border:1.5px solid #8B95A1"></span></span><span style="font:500 9.5px/1.1 Inter,sans-serif;color:#98A1AC;text-align:center">Connections</span></div>
+    <div style="margin-top:auto;width:100%;padding:9px 0 8px;border-radius:9px;display:flex;flex-direction:column;align-items:center;gap:7px"><span style="width:13px;height:13px;border-radius:50%;border:1.5px solid #8B95A1"></span><span style="font:500 9.5px/1.1 Inter,sans-serif;color:#98A1AC;text-align:center">Settings</span></div>
+  </div>
+
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+    <div style="height:48px;flex:none;display:flex;align-items:center;padding:0 20px;border-bottom:1px solid #EEF0F2;background:#fff">
+      <span style="font:500 12px/1 Inter,sans-serif;color:#63707F">Home</span>
+      <div style="margin:0 auto;width:420px;height:32px;border:1px solid #E4E7EB;background:#FBFCFC;border-radius:8px;display:flex;align-items:center;justify-content:space-between;padding:0 11px"><span style="font:400 12.5px/1 Inter,sans-serif;color:#98A1AC">Go anywhere, ask anything</span><span style="font:500 11px/1 'JetBrains Mono',monospace;color:#B6BEC7">⌘K</span></div>
+      <span style="font:400 11px/1 'JetBrains Mono',monospace;color:#98A1AC">Mon 3 Aug</span>
+    </div>
+
+    <div style="flex:1;overflow:hidden;display:flex;justify-content:center;padding:42px 0">
+     <div style="width:720px">
+      <div style="font:600 11px/1 'JetBrains Mono',monospace;letter-spacing:.09em;text-transform:uppercase;color:#A8AFB8;margin-bottom:16px">Your context, this morning</div>
+      <p style="margin:0 0 34px;font:400 21px/1.5 Inter,sans-serif;letter-spacing:-.01em;color:#1D2635;text-wrap:pretty">Everything is current except <span style="border-bottom:2px solid #F5C34E">customer feedback</span>, last verified 19 days ago. Three things happened that touch your strategy.</p>
+
+      <div style="display:flex;flex-direction:column;margin-bottom:32px">
+        <div style="padding:20px 0;border-top:1px solid #EAECEF;display:flex;gap:14px"><span style="font:500 12px/1.6 'JetBrains Mono',monospace;color:#C0C6CD;flex:none;width:18px">01</span><div style="flex:1"><div style="font:400 15px/1.6 Inter,sans-serif;color:#1D2635;margin-bottom:9px">Mixpanel put session replay on its pricing page. It touches <span style="color:#0E8F86">pillar 2</span>, and you already ship three of the five capabilities buyers name alongside it.</div><div style="display:flex;align-items:center;gap:9px"><span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#63707F;background:#F1F3F5;border-radius:5px;padding:4px 7px">2 sources</span><span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#63707F;background:#F1F3F5;border-radius:5px;padding:4px 7px">142 features</span><span style="font:500 12.5px/1 Inter,sans-serif;color:#0E8F86">Explore this →</span></div></div></div>
+        <div style="padding:20px 0;border-top:1px solid #EAECEF;display:flex;gap:14px"><span style="font:500 12px/1.6 'JetBrains Mono',monospace;color:#C0C6CD;flex:none;width:18px">02</span><div style="flex:1"><div style="font:400 15px/1.6 Inter,sans-serif;color:#1D2635;margin-bottom:9px">"Slow dashboard load" reached 41 mentions with nothing on the roadmap against it. I've drafted a suggestion, unsent.</div><div style="display:flex;align-items:center;gap:9px"><span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#63707F;background:#F1F3F5;border-radius:5px;padding:4px 7px">41 feedback items</span><span style="font:500 12.5px/1 Inter,sans-serif;color:#0E8F86">Read the draft →</span></div></div></div>
+        <div style="padding:20px 0;border-top:1px solid #EAECEF;border-bottom:1px solid #EAECEF;display:flex;gap:14px"><span style="font:500 12px/1.6 'JetBrains Mono',monospace;color:#C0C6CD;flex:none;width:18px">03</span><div style="flex:1"><div style="font:400 15px/1.6 Inter,sans-serif;color:#1D2635;margin-bottom:9px">Two Q3 initiatives duplicate capability already in your feature inventory. Worth a look before planning closes.</div><div style="display:flex;align-items:center;gap:9px"><span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#63707F;background:#F1F3F5;border-radius:5px;padding:4px 7px">Jira · 27 initiatives</span><span style="font:500 12.5px/1 Inter,sans-serif;color:#0E8F86">See the review →</span></div></div></div>
+      </div>
+
+      <div style="border:1px solid #E4E7EB;background:#fff;border-radius:10px;padding:16px 18px;margin-bottom:26px"><div style="font:400 14px/1 Inter,sans-serif;color:#B6BEC7">Test a product idea, or ask about anything above…</div></div>
+
+      <div style="display:flex;align-items:center;gap:12px;padding-top:2px"><span style="font:600 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#B6BEC7">Serving</span><span style="font:400 12.5px/1 Inter,sans-serif;color:#3A4250">Claude 118 · Cursor 22 this week</span><span style="color:#D5DAE0">·</span><span style="font:400 12.5px/1 Inter,sans-serif;color:#3A4250">2 teammates reading</span><span style="font:500 12.5px/1 Inter,sans-serif;color:#0E8F86">Connect another</span></div>
+     </div>
+    </div>
+
+    <div style="height:30px;flex:none;border-top:1px solid #EEF0F2;background:#fff;display:flex;align-items:center;gap:16px;padding:0 18px;font:400 11px/1 'JetBrains Mono',monospace;color:#8A939E"><span style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:#10B77F"></span>Local · 42 MB on disk</span><span>Agents idle · next run 21:00</span><span>MCP serving :7317</span><span>Works offline</span><span style="margin-left:auto">Licence to 14 Mar 2027</span></div>
+  </div>
+</div>
+</div>
+
+<div class="dv-olabel" style="margin-top:6px"><span style="font-weight:600;color:#1a1a1a">Competitors, with a deep dive open</span><span>— rail keeps you oriented; the thread still grows inside the column rather than in a side panel</span></div>
+<div class="dv-card" style="width:1440px">
+<div style="height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;background:#20262E;border-bottom:1px solid #2C333C"><span style="width:11px;height:11px;border-radius:50%;background:#3A424C"></span><span style="width:11px;height:11px;border-radius:50%;background:#3A424C"></span><span style="width:11px;height:11px;border-radius:50%;background:#3A424C"></span></div>
+<div style="display:flex;height:700px;background:#FCFCFB">
+  <div style="width:84px;flex:none;background:#20262E;display:flex;flex-direction:column;align-items:center;padding:14px 8px;gap:3px">
+    <div style="width:26px;height:26px;border-radius:7px;background:#10B2A6;margin-bottom:14px"></div>
+    <div style="width:100%;padding:9px 0 8px;border-radius:9px;display:flex;flex-direction:column;align-items:center;gap:7px"><span style="width:14px;height:14px;border-radius:50%;border:1.5px solid #8B95A1"></span><span style="font:500 9.5px/1.1 Inter,sans-serif;color:#98A1AC">Home</span></div>
+    <div style="width:100%;padding:9px 0 8px;border-radius:9px;background:rgba(255,255,255,.11);display:flex;flex-direction:column;align-items:center;gap:7px"><span style="position:relative;width:18px;height:14px"><span style="position:absolute;left:0;top:1px;width:12px;height:12px;border-radius:50%;border:1.5px solid #3ED3C6"></span><span style="position:absolute;right:0;top:1px;width:12px;height:12px;border-radius:50%;border:1.5px solid #3ED3C6"></span></span><span style="font:600 9.5px/1.1 Inter,sans-serif;color:#EAEEF2">Competitors</span></div>
+    <div style="width:100%;padding:9px 0 8px;border-radius:9px;display:flex;flex-direction:column;align-items:center;gap:7px"><span style="display:flex;align-items:flex-end;gap:2px;height:14px"><span style="width:5px;height:9px;border-radius:2px;background:#8B95A1"></span><span style="width:5px;height:14px;border-radius:2px;background:#8B95A1"></span><span style="width:5px;height:6px;border-radius:2px;background:#8B95A1"></span></span><span style="font:500 9.5px/1.1 Inter,sans-serif;color:#98A1AC">Customers</span></div>
+    <div style="width:100%;padding:9px 0 8px;border-radius:9px;display:flex;flex-direction:column;align-items:center;gap:7px"><span style="width:13px;height:13px;background:#8B95A1;transform:rotate(45deg);border-radius:2px"></span><span style="font:500 9.5px/1.1 Inter,sans-serif;color:#98A1AC">Strategy</span></div>
+    <div style="width:100%;padding:9px 0 8px;border-radius:9px;display:flex;flex-direction:column;align-items:center;gap:7px"><span style="display:flex;flex-direction:column;gap:3px;width:16px"><span style="height:3px;border-radius:2px;background:#8B95A1"></span><span style="height:3px;width:11px;border-radius:2px;background:#8B95A1"></span><span style="height:3px;width:14px;border-radius:2px;background:#8B95A1"></span></span><span style="font:500 9.5px/1.1 Inter,sans-serif;color:#98A1AC">Roadmap</span></div>
+    <div style="width:100%;padding:9px 0 8px;border-radius:9px;display:flex;flex-direction:column;align-items:center;gap:7px"><span style="display:flex;align-items:center;height:14px"><span style="width:6px;height:6px;border-radius:2px;border:1.5px solid #8B95A1"></span><span style="width:5px;height:1.5px;background:#8B95A1"></span><span style="width:6px;height:6px;border-radius:2px;border:1.5px solid #8B95A1"></span></span><span style="font:500 9.5px/1.1 Inter,sans-serif;color:#98A1AC">Connections</span></div>
+    <div style="margin-top:auto;width:100%;padding:9px 0 8px;border-radius:9px;display:flex;flex-direction:column;align-items:center;gap:7px"><span style="width:13px;height:13px;border-radius:50%;border:1.5px solid #8B95A1"></span><span style="font:500 9.5px/1.1 Inter,sans-serif;color:#98A1AC">Settings</span></div>
+  </div>
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+    <div style="height:48px;flex:none;display:flex;align-items:center;padding:0 20px;border-bottom:1px solid #EEF0F2;background:#fff"><span style="font:500 12px/1 Inter,sans-serif;color:#63707F">Competitors · Mixpanel</span><div style="margin:0 auto;width:420px;height:32px;border:1px solid #E4E7EB;background:#FBFCFC;border-radius:8px;display:flex;align-items:center;justify-content:space-between;padding:0 11px"><span style="font:400 12.5px/1 Inter,sans-serif;color:#98A1AC">Go anywhere, ask anything</span><span style="font:500 11px/1 'JetBrains Mono',monospace;color:#B6BEC7">⌘K</span></div><span style="font:400 11px/1 'JetBrains Mono',monospace;color:#98A1AC">Mon 3 Aug</span></div>
+    <div style="flex:1;display:flex;justify-content:center;padding:38px 0;overflow:hidden">
+     <div style="width:720px">
+      <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:6px"><h1 style="margin:0;font:600 22px/1.2 Inter,sans-serif;letter-spacing:-.02em;color:#1D2635">Mixpanel</h1><span style="font:600 10px/1 'JetBrains Mono',monospace;color:#0B6F68;background:#E7F6F5;border-radius:4px;padding:4px 6px">DIRECT</span><span style="margin-left:auto;font:500 12.5px/1 Inter,sans-serif;color:#0E8F86">Explore this</span></div>
+      <div style="font:400 12px/1 'JetBrains Mono',monospace;color:#98A1AC;margin-bottom:26px">mixpanel.com · sentiment 66 · 107 reviews · verified 4 h ago</div>
+
+      <p style="margin:0 0 24px;font:400 15px/1.65 Inter,sans-serif;color:#1D2635;text-wrap:pretty">Two things changed since you last looked. Session replay is now on the pricing page, and two G2 reviews complain about warehouse sync limits.</p>
+
+      <div style="display:flex;gap:34px;margin-bottom:32px;padding-bottom:26px;border-bottom:1px solid #EAECEF">
+        <div style="flex:1"><div style="font:600 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#A8AFB8;margin-bottom:10px">They beat you on</div><div style="font:400 13.5px/1.75 Inter,sans-serif;color:#3A4250">Warehouse-native modelling<br>Free tier depth<br>Session replay</div></div>
+        <div style="flex:1"><div style="font:600 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#A8AFB8;margin-bottom:10px">You beat them on</div><div style="font:400 13.5px/1.75 Inter,sans-serif;color:#3A4250">Time to first dashboard<br>Governance<br>Support responsiveness</div></div>
+      </div>
+
+      <div style="border-left:2px solid #10B2A6;padding-left:20px">
+        <div style="font:600 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#10B2A6;margin-bottom:12px">Deep dive · open</div>
+        <div style="font:500 15.5px/1.5 Inter,sans-serif;color:#1D2635;margin-bottom:12px">Could we match warehouse-native modelling in two quarters?</div>
+        <div style="font:400 13.5px/1.7 Inter,sans-serif;color:#3A4250;margin-bottom:12px">Your inventory already covers ingestion and transform scheduling. What's missing is reverse-ETL and a semantic layer, and both appear in your feedback under a different name.</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px"><span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#63707F;background:#F1F3F5;border-radius:5px;padding:4px 7px">142 features</span><span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#63707F;background:#F1F3F5;border-radius:5px;padding:4px 7px">theme: data plumbing</span><span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#63707F;background:#F1F3F5;border-radius:5px;padding:4px 7px">pillar 2</span></div>
+        <div style="display:flex;gap:9px"><div style="padding:8px 13px;background:#10B2A6;border-radius:7px;font:600 12.5px/1 Inter,sans-serif;color:#fff">File under Mixpanel</div><div style="padding:8px 13px;border:1px solid #DCE1E7;background:#fff;border-radius:7px;font:500 12.5px/1 Inter,sans-serif;color:#3A4250">Keep asking</div></div>
+      </div>
+
+      <div style="margin-top:30px;font:400 12.5px/1.7 Inter,sans-serif;color:#98A1AC">Filed here already: <span style="color:#3A4250">Replay: buy, partner or ignore</span> · 28 Jul</div>
+     </div>
+    </div>
+    <div style="height:30px;flex:none;border-top:1px solid #EEF0F2;background:#fff;display:flex;align-items:center;gap:16px;padding:0 18px;font:400 11px/1 'JetBrains Mono',monospace;color:#8A939E"><span style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:#10B77F"></span>Local · 42 MB</span><span>Agents idle</span><span>MCP :7317 · Claude 118</span><span style="margin-left:auto">Works offline</span></div>
+  </div>
+</div>
+</div>
+
+<div class="dv-olabel" style="margin-top:6px"><span style="font-weight:600;color:#1a1a1a">Day one</span><span>— rail present but only the chosen modules are lit; everything else waits</span></div>
+<div class="dv-card" style="width:1440px">
+<div style="height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;background:#20262E;border-bottom:1px solid #2C333C"><span style="width:11px;height:11px;border-radius:50%;background:#3A424C"></span><span style="width:11px;height:11px;border-radius:50%;background:#3A424C"></span><span style="width:11px;height:11px;border-radius:50%;background:#3A424C"></span></div>
+<div style="display:flex;height:566px;background:#FCFCFB">
+  <div style="width:84px;flex:none;background:#20262E;display:flex;flex-direction:column;align-items:center;padding:14px 8px;gap:3px">
+    <div style="width:26px;height:26px;border-radius:7px;background:#10B2A6;margin-bottom:14px"></div>
+    <div style="width:100%;padding:9px 0 8px;border-radius:9px;background:rgba(255,255,255,.11);display:flex;flex-direction:column;align-items:center;gap:7px"><span style="width:14px;height:14px;border-radius:50%;background:#3ED3C6"></span><span style="font:600 9.5px/1.1 Inter,sans-serif;color:#EAEEF2">Home</span></div>
+    <div style="width:100%;padding:9px 0 8px;border-radius:9px;display:flex;flex-direction:column;align-items:center;gap:7px;opacity:.4"><span style="position:relative;width:18px;height:14px"><span style="position:absolute;left:0;top:1px;width:12px;height:12px;border-radius:50%;border:1.5px solid #8B95A1"></span><span style="position:absolute;right:0;top:1px;width:12px;height:12px;border-radius:50%;border:1.5px solid #8B95A1"></span></span><span style="font:500 9.5px/1.1 Inter,sans-serif;color:#98A1AC">Competitors</span></div>
+    <div style="width:100%;padding:9px 0 8px;border-radius:9px;display:flex;flex-direction:column;align-items:center;gap:7px;opacity:.4"><span style="width:13px;height:13px;background:#8B95A1;transform:rotate(45deg);border-radius:2px"></span><span style="font:500 9.5px/1.1 Inter,sans-serif;color:#98A1AC">Strategy</span></div>
+    <div style="width:100%;padding:9px 0 8px;border-radius:9px;display:flex;flex-direction:column;align-items:center;gap:7px"><span style="display:flex;align-items:center;height:14px"><span style="width:6px;height:6px;border-radius:2px;border:1.5px solid #8B95A1"></span><span style="width:5px;height:1.5px;background:#8B95A1"></span><span style="width:6px;height:6px;border-radius:2px;border:1.5px solid #8B95A1"></span></span><span style="font:500 9.5px/1.1 Inter,sans-serif;color:#98A1AC">Connections</span></div>
+    <div style="margin-top:auto;width:100%;padding:9px 0 8px;border-radius:9px;display:flex;flex-direction:column;align-items:center;gap:7px"><span style="width:13px;height:13px;border-radius:50%;border:1.5px solid #8B95A1"></span><span style="font:500 9.5px/1.1 Inter,sans-serif;color:#98A1AC">Settings</span></div>
+  </div>
+  <div style="flex:1;display:flex;flex-direction:column">
+    <div style="height:48px;flex:none;display:flex;align-items:center;padding:0 20px;border-bottom:1px solid #EEF0F2;background:#fff"><span style="font:500 12px/1 Inter,sans-serif;color:#63707F">Home</span></div>
+    <div style="flex:1;display:flex;justify-content:center;align-items:center">
+      <div style="width:600px">
+        <p style="margin:0 0 26px;font:400 23px/1.45 Inter,sans-serif;letter-spacing:-.015em;color:#1D2635;text-wrap:pretty">Give me your product's URL and I'll build the first draft of your context.</p>
+        <div style="display:flex;gap:10px;margin-bottom:14px"><div style="flex:1;height:46px;border:1px solid #E4E7EB;background:#fff;border-radius:9px;display:flex;align-items:center;padding:0 14px;font:400 14px/1 Inter,sans-serif;color:#B6BEC7">https://</div><div style="padding:0 20px;height:46px;display:flex;align-items:center;background:#10B2A6;border-radius:9px;font:600 14px/1 Inter,sans-serif;color:#fff">Begin</div></div>
+        <div style="font:400 12.5px/1.65 Inter,sans-serif;color:#98A1AC">Roughly four minutes: help centre, releases and changelog get read, then I'll propose competitors for you to keep or drop. Step 1 of 5.</div>
+      </div>
+    </div>
+    <div style="height:30px;flex:none;border-top:1px solid #EEF0F2;background:#fff;display:flex;align-items:center;gap:16px;padding:0 18px;font:400 11px/1 'JetBrains Mono',monospace;color:#8A939E"><span style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:#10B77F"></span>Local · nothing sent anywhere</span><span>Works offline</span></div>
+  </div>
+</div>
+</div>
+</div>
+
+</div>
+<p class="dv-next">Try next: "swap the placeholder rail glyphs for lucide icons" · "build Roadmap Review and the 5-step onboarding in <a class="dv-oid" href="#2a">2a</a>" · "show <a class="dv-oid" href="#2a">2a</a> in dark mode"</p>
+</section>
+
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Three directions for Desktop Edition — each a different answer to "why was v1 overwhelming?"</span></div>
+
+<div style="max-width:1000px;display:grid;grid-template-columns:1fr 1fr;gap:28px;margin:0 0 30px;font:13px/1.65 Inter,sans-serif;color:#3a4250">
+<div><div style="font:600 11px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#8a9099;margin-bottom:9px">What I took from the brief</div><p style="margin:0 0 10px">Six destinations, the three-level grammar (overview → object → thread), Context Health as home, MCP as a quiet discoverable panel, local-first cues in the chrome. Design system unchanged: shadcn New York, Inter + JetBrains Mono, teal primary, British English.</p><p style="margin:0">Every frame is 1440×900 and shows the mature state above the day-one state, so you can judge both at once.</p></div>
+<div><div style="font:600 11px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#8a9099;margin-bottom:9px">My diagnosis, and where the three differ</div><p style="margin:0 0 10px">Nobody reached active use, so the first session has to end with one thing done. The three directions place that bet differently: <a class="dv-oid" href="#1a">1a</a> keeps a familiar shell and thins it out; <a class="dv-oid" href="#1b">1b</a> removes navigation entirely and makes the app read as a briefing; <a class="dv-oid" href="#1c">1c</a> turns it into a triage queue you can finish.</p><p style="margin:0">They vary exactly where you asked: navigation model, where the agent lives, and how a deep dive is spawned and filed.</p></div>
+</div>
+
+<div class="dv-opts">
+
+<!-- ============ 1a ============ -->
+<div class="dv-opt" id="1a">
+<div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a><span><strong style="font-weight:600;color:#1a1a1a">Quiet sidebar</strong> · conventional · six doors, agent in a right drawer, deep dives file under their object</span></div>
+
+<div class="dv-card" style="width:1440px">
+<div style="height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;background:#F7F8F9;border-bottom:1px solid #E6EAEE"><span style="width:11px;height:11px;border-radius:50%;background:#E1E4E8"></span><span style="width:11px;height:11px;border-radius:50%;background:#E1E4E8"></span><span style="width:11px;height:11px;border-radius:50%;background:#E1E4E8"></span><span style="margin-left:10px;font:500 11px/1 Inter,sans-serif;color:#98A1AC">Discoveree</span></div>
+<div style="display:flex;height:866px;background:#fff">
+
+  <div style="width:236px;flex:none;border-right:1px solid #E6EAEE;display:flex;flex-direction:column;padding:16px 12px">
+    <div style="display:flex;align-items:center;gap:7px;padding:0 6px 14px"><span style="width:9px;height:9px;border-radius:50%;background:#10B2A6"></span><span style="font:700 15px/1 Inter,sans-serif;color:#10B2A6;letter-spacing:-.01em">Discoveree</span></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 8px;border:1px solid #E6EAEE;border-radius:6px;margin-bottom:16px"><span style="font:500 12.5px/1 Inter,sans-serif;color:#1D2635">Analytics Platform Pro</span><span style="font:400 11px/1 Inter,sans-serif;color:#98A1AC">▾</span></div>
+    <div style="display:flex;flex-direction:column;gap:1px">
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:6px;background:#E7F6F5"><span style="width:5px;height:5px;border-radius:50%;background:#10B2A6"></span><span style="font:600 13px/1 Inter,sans-serif;color:#0B6F68">Home</span></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 8px 7px 22px"><span style="font:400 13px/1 Inter,sans-serif;color:#3A4250">Competitive Intelligence</span></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 8px 7px 22px"><span style="font:400 13px/1 Inter,sans-serif;color:#3A4250">Customer Insights</span><span style="width:6px;height:6px;border-radius:50%;background:#F5A209"></span></div>
+      <div style="display:flex;align-items:center;padding:7px 8px 7px 22px"><span style="font:400 13px/1 Inter,sans-serif;color:#3A4250">Strategy</span></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 8px 7px 22px"><span style="font:400 13px/1 Inter,sans-serif;color:#3A4250">Roadmap Review</span><span style="font:600 10px/1 'JetBrains Mono',monospace;color:#0B6F68;background:#E7F6F5;border-radius:4px;padding:3px 5px">3</span></div>
+      <div style="display:flex;align-items:center;padding:7px 8px 7px 22px"><span style="font:400 13px/1 Inter,sans-serif;color:#3A4250">Connections</span></div>
+    </div>
+    <div style="margin-top:auto;display:flex;flex-direction:column;gap:8px">
+      <div style="border:1px solid #E6EAEE;border-radius:7px;padding:10px 11px">
+        <div style="font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#98A1AC;margin-bottom:8px">Serving context</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;justify-content:space-between"><span style="font:500 12px/1 Inter,sans-serif;color:#3A4250">Claude</span><span style="font:500 11px/1 'JetBrains Mono',monospace;color:#63707F">118</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="font:500 12px/1 Inter,sans-serif;color:#3A4250">Cursor</span><span style="font:500 11px/1 'JetBrains Mono',monospace;color:#63707F">22</span></div>
+        </div>
+        <div style="margin-top:9px;font:500 11.5px/1 Inter,sans-serif;color:#0E8F86">Connect a teammate</div>
+      </div>
+      <div style="display:flex;align-items:center;padding:7px 8px"><span style="font:400 13px/1 Inter,sans-serif;color:#63707F">Settings</span></div>
+    </div>
+  </div>
+
+  <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+    <div style="flex:1;padding:30px 36px;overflow:hidden">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:26px">
+        <div>
+          <h1 style="margin:0 0 8px;font:600 26px/1.15 Inter,sans-serif;letter-spacing:-.02em;color:#1D2635">Context health</h1>
+          <div style="display:flex;align-items:center;gap:10px"><span style="font:500 13px/1 Inter,sans-serif;color:#63707F">82% complete</span><span style="color:#C9D0D8">·</span><span style="font:500 13px/1 Inter,sans-serif;color:#B07403">2 items need attention</span></div>
+        </div>
+        <div style="display:flex;gap:9px">
+          <div style="padding:9px 14px;border:1px solid #DCE1E7;border-radius:7px;font:500 13px/1 Inter,sans-serif;color:#3A4250">Run agents now</div>
+          <div style="padding:9px 16px;background:#10B2A6;border:1px solid #0E9E93;border-radius:7px;font:600 13px/1 Inter,sans-serif;color:#fff">Test a product idea</div>
+        </div>
+      </div>
+
+      <div style="height:6px;border-radius:3px;background:#EEF1F4;overflow:hidden;margin-bottom:26px"><div style="width:82%;height:100%;background:#10B2A6"></div></div>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:26px">
+        <div style="border:1px solid #DCE1E7;border-radius:9px;padding:18px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><span style="font:600 14px/1 Inter,sans-serif;color:#1D2635">Competitive Intelligence</span><span style="font:500 10px/1 'JetBrains Mono',monospace;color:#0B7A5E;background:#E6F7F0;border-radius:4px;padding:4px 6px">FRESH</span></div>
+          <div style="font:400 12.5px/1.55 Inter,sans-serif;color:#63707F">4 competitors tracked. Mixpanel shipped two changes since Monday.</div>
+          <div style="margin-top:12px;font:400 11px/1 'JetBrains Mono',monospace;color:#98A1AC">verified 4 h ago</div>
+        </div>
+        <div style="border:1px solid #F0DDB4;background:#FFFBF2;border-radius:9px;padding:18px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><span style="font:600 14px/1 Inter,sans-serif;color:#1D2635">Customer Insights</span><span style="font:500 10px/1 'JetBrains Mono',monospace;color:#8A5A02;background:#FBEFD6;border-radius:4px;padding:4px 6px">STALE</span></div>
+          <div style="font:400 12.5px/1.55 Inter,sans-serif;color:#63707F">3 segments, 812 feedback items. No new source since 15 July.</div>
+          <div style="margin-top:12px;font:500 11.5px/1 Inter,sans-serif;color:#0E8F86">Reconnect a source</div>
+        </div>
+        <div style="border:1px solid #DCE1E7;border-radius:9px;padding:18px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><span style="font:600 14px/1 Inter,sans-serif;color:#1D2635">Strategy</span><span style="font:500 10px/1 'JetBrains Mono',monospace;color:#0B7A5E;background:#E6F7F0;border-radius:4px;padding:4px 6px">FRESH</span></div>
+          <div style="font:400 12.5px/1.55 Inter,sans-serif;color:#63707F">Vision, 4 pillars, 6 goals. Two deep dives open.</div>
+          <div style="margin-top:12px;font:400 11px/1 'JetBrains Mono',monospace;color:#98A1AC">verified 2 d ago</div>
+        </div>
+        <div style="border:1px solid #DCE1E7;border-radius:9px;padding:18px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><span style="font:600 14px/1 Inter,sans-serif;color:#1D2635">Roadmap Review</span><span style="font:500 10px/1 'JetBrains Mono',monospace;color:#0B6F68;background:#E7F6F5;border-radius:4px;padding:4px 6px">3 NEW</span></div>
+          <div style="font:400 12.5px/1.55 Inter,sans-serif;color:#63707F">27 initiatives scored. 3 suggestions awaiting your decision.</div>
+          <div style="margin-top:12px;font:400 11px/1 'JetBrains Mono',monospace;color:#98A1AC">weekly report · Mon 09:00</div>
+        </div>
+        <div style="border:1px solid #DCE1E7;border-radius:9px;padding:18px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><span style="font:600 14px/1 Inter,sans-serif;color:#1D2635">Product profile</span><span style="font:500 10px/1 'JetBrains Mono',monospace;color:#0B7A5E;background:#E6F7F0;border-radius:4px;padding:4px 6px">FRESH</span></div>
+          <div style="font:400 12.5px/1.55 Inter,sans-serif;color:#63707F">142 features inventoried from help centre and 38 releases.</div>
+          <div style="margin-top:12px;font:400 11px/1 'JetBrains Mono',monospace;color:#98A1AC">changelog checked 1 h ago</div>
+        </div>
+        <div style="border:1px dashed #DCE1E7;border-radius:9px;padding:18px;display:flex;flex-direction:column;justify-content:center">
+          <div style="font:500 13px/1.4 Inter,sans-serif;color:#63707F">Add a capability</div>
+          <div style="margin-top:6px;font:400 12px/1.5 Inter,sans-serif;color:#98A1AC">Sources and provenance are switched off.</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr;gap:0;border:1px solid #DCE1E7;border-radius:9px;overflow:hidden">
+        <div style="padding:14px 18px;border-bottom:1px solid #E6EAEE;display:flex;align-items:center;justify-content:space-between"><span style="font:600 13.5px/1 Inter,sans-serif;color:#1D2635">This week from your agents</span><span style="font:400 11.5px/1 Inter,sans-serif;color:#98A1AC">6 changes · 28 Jul – 3 Aug</span></div>
+        <div style="padding:13px 18px;border-bottom:1px solid #F0F2F5;display:flex;align-items:center;gap:12px"><span style="flex:1;font:400 13px/1.4 Inter,sans-serif;color:#3A4250">Mixpanel added session replay to its pricing page — overlaps two of your pillars.</span><span style="font:500 10px/1 'JetBrains Mono',monospace;color:#63707F;background:#F3F5F7;border:1px solid #E6EAEE;border-radius:5px;padding:4px 6px">2 sources</span><span style="font:500 12px/1 Inter,sans-serif;color:#0E8F86">Explore</span></div>
+        <div style="padding:13px 18px;border-bottom:1px solid #F0F2F5;display:flex;align-items:center;gap:12px"><span style="flex:1;font:400 13px/1.4 Inter,sans-serif;color:#3A4250">"Slow dashboard load" rose to 41 mentions and has no roadmap coverage.</span><span style="font:500 10px/1 'JetBrains Mono',monospace;color:#63707F;background:#F3F5F7;border:1px solid #E6EAEE;border-radius:5px;padding:4px 6px">41 items</span><span style="font:500 12px/1 Inter,sans-serif;color:#0E8F86">Explore</span></div>
+        <div style="padding:13px 18px;display:flex;align-items:center;gap:12px"><span style="flex:1;font:400 13px/1.4 Inter,sans-serif;color:#3A4250">Two Q3 initiatives duplicate capability you already ship.</span><span style="font:500 10px/1 'JetBrains Mono',monospace;color:#63707F;background:#F3F5F7;border:1px solid #E6EAEE;border-radius:5px;padding:4px 6px">feature inventory</span><span style="font:500 12px/1 Inter,sans-serif;color:#0E8F86">Explore</span></div>
+      </div>
+    </div>
+
+    <div style="height:30px;flex:none;border-top:1px solid #E6EAEE;background:#FBFCFC;display:flex;align-items:center;gap:16px;padding:0 18px;font:400 11px/1 'JetBrains Mono',monospace;color:#8A939E">
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:#10B77F"></span>Local · 42 MB on disk</span><span>Agents idle · next run 21:00</span><span>MCP serving :7317</span><span>Works offline</span><span style="margin-left:auto">Licence to 14 Mar 2027</span>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="dv-olabel" style="margin-top:6px"><span style="font-weight:600;color:#1a1a1a">Day one</span><span>— only the modules you chose exist; each is a single prompt</span></div>
+<div class="dv-card" style="width:1440px">
+<div style="height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;background:#F7F8F9;border-bottom:1px solid #E6EAEE"><span style="width:11px;height:11px;border-radius:50%;background:#E1E4E8"></span><span style="width:11px;height:11px;border-radius:50%;background:#E1E4E8"></span><span style="width:11px;height:11px;border-radius:50%;background:#E1E4E8"></span></div>
+<div style="display:flex;height:566px;background:#fff">
+  <div style="width:236px;flex:none;border-right:1px solid #E6EAEE;display:flex;flex-direction:column;padding:16px 12px">
+    <div style="display:flex;align-items:center;gap:7px;padding:0 6px 14px"><span style="width:9px;height:9px;border-radius:50%;background:#10B2A6"></span><span style="font:700 15px/1 Inter,sans-serif;color:#10B2A6;letter-spacing:-.01em">Discoveree</span></div>
+    <div style="display:flex;flex-direction:column;gap:1px">
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:6px;background:#E7F6F5"><span style="width:5px;height:5px;border-radius:50%;background:#10B2A6"></span><span style="font:600 13px/1 Inter,sans-serif;color:#0B6F68">Home</span></div>
+      <div style="padding:7px 8px 7px 22px;font:400 13px/1 Inter,sans-serif;color:#3A4250">Competitive Intelligence</div>
+      <div style="padding:7px 8px 7px 22px;font:400 13px/1 Inter,sans-serif;color:#3A4250">Strategy</div>
+      <div style="padding:7px 8px 7px 22px;font:400 13px/1 Inter,sans-serif;color:#3A4250">Connections</div>
+    </div>
+    <div style="margin-top:auto;font:400 11.5px/1.5 Inter,sans-serif;color:#98A1AC;padding:0 8px">Two capabilities off.<br><span style="color:#0E8F86;font-weight:500">Add in Settings</span></div>
+  </div>
+  <div style="flex:1;display:flex;flex-direction:column">
+    <div style="flex:1;padding:30px 36px">
+      <h1 style="margin:0 0 8px;font:600 26px/1.15 Inter,sans-serif;letter-spacing:-.02em;color:#1D2635">Context health</h1>
+      <div style="font:500 13px/1 Inter,sans-serif;color:#63707F;margin-bottom:24px">18% complete · one thing to do</div>
+      <div style="border:1px solid #DCE1E7;border-radius:9px;padding:24px;max-width:620px;margin-bottom:14px">
+        <div style="font:600 15px/1.3 Inter,sans-serif;color:#1D2635;margin-bottom:6px">Point Discoveree at your product</div>
+        <div style="font:400 13px/1.6 Inter,sans-serif;color:#63707F;margin-bottom:16px">One URL. The profile agent drafts your feature inventory and proposes competitors; everything else on this page builds from there.</div>
+        <div style="display:flex;gap:9px"><div style="flex:1;height:38px;border:1px solid #DCE1E7;border-radius:7px;display:flex;align-items:center;padding:0 12px;font:400 13px/1 Inter,sans-serif;color:#B6BEC7">https://</div><div style="padding:0 16px;height:38px;display:flex;align-items:center;background:#10B2A6;border-radius:7px;font:600 13px/1 Inter,sans-serif;color:#fff">Start</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;max-width:948px">
+        <div style="border:1px dashed #DCE1E7;border-radius:9px;padding:18px"><div style="font:600 13.5px/1 Inter,sans-serif;color:#3A4250;margin-bottom:8px">Competitive Intelligence</div><div style="font:400 12.5px/1.55 Inter,sans-serif;color:#98A1AC">Waiting on your product profile.</div></div>
+        <div style="border:1px dashed #DCE1E7;border-radius:9px;padding:18px"><div style="font:600 13.5px/1 Inter,sans-serif;color:#3A4250;margin-bottom:8px">Strategy</div><div style="font:400 12.5px/1.55 Inter,sans-serif;color:#98A1AC">Define your vision when you're ready.</div></div>
+        <div style="border:1px solid #DCE1E7;border-radius:9px;padding:18px"><div style="font:600 13.5px/1 Inter,sans-serif;color:#3A4250;margin-bottom:8px">Your AI tools</div><div style="font:400 12.5px/1.55 Inter,sans-serif;color:#63707F">Claude configured. Nothing to serve yet.</div></div>
+      </div>
+    </div>
+    <div style="height:30px;flex:none;border-top:1px solid #E6EAEE;background:#FBFCFC;display:flex;align-items:center;gap:16px;padding:0 18px;font:400 11px/1 'JetBrains Mono',monospace;color:#8A939E"><span style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:#10B77F"></span>Local · 2 MB on disk</span><span>MCP serving :7317</span><span>Works offline</span></div>
+  </div>
+</div>
+</div>
+
+<div class="dv-olabel" style="margin-top:6px"><span style="font-weight:600;color:#1a1a1a">Module overview + object + thread</span><span>— agent lives in a right drawer; a deep dive files under the competitor it came from</span></div>
+<div class="dv-card" style="width:1440px">
+<div style="height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;background:#F7F8F9;border-bottom:1px solid #E6EAEE"><span style="width:11px;height:11px;border-radius:50%;background:#E1E4E8"></span><span style="width:11px;height:11px;border-radius:50%;background:#E1E4E8"></span><span style="width:11px;height:11px;border-radius:50%;background:#E1E4E8"></span></div>
+<div style="display:flex;height:700px;background:#fff">
+  <div style="width:236px;flex:none;border-right:1px solid #E6EAEE;padding:16px 12px">
+    <div style="display:flex;align-items:center;gap:7px;padding:0 6px 14px"><span style="width:9px;height:9px;border-radius:50%;background:#10B2A6"></span><span style="font:700 15px/1 Inter,sans-serif;color:#10B2A6">Discoveree</span></div>
+    <div style="display:flex;flex-direction:column;gap:1px">
+      <div style="padding:7px 8px 7px 22px;font:400 13px/1 Inter,sans-serif;color:#3A4250">Home</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:6px;background:#E7F6F5"><span style="width:5px;height:5px;border-radius:50%;background:#10B2A6"></span><span style="font:600 13px/1 Inter,sans-serif;color:#0B6F68">Competitive Intelligence</span></div>
+      <div style="padding:7px 8px 7px 22px;font:400 13px/1 Inter,sans-serif;color:#3A4250">Customer Insights</div>
+      <div style="padding:7px 8px 7px 22px;font:400 13px/1 Inter,sans-serif;color:#3A4250">Strategy</div>
+      <div style="padding:7px 8px 7px 22px;font:400 13px/1 Inter,sans-serif;color:#3A4250">Roadmap Review</div>
+      <div style="padding:7px 8px 7px 22px;font:400 13px/1 Inter,sans-serif;color:#3A4250">Connections</div>
+    </div>
+  </div>
+  <div style="flex:1;min-width:0;padding:26px 30px;border-right:1px solid #E6EAEE">
+    <div style="font:400 11.5px/1 Inter,sans-serif;color:#98A1AC;margin-bottom:12px">Competitive Intelligence · Mixpanel</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+      <h1 style="margin:0;font:600 24px/1.15 Inter,sans-serif;letter-spacing:-.02em;color:#1D2635">Mixpanel</h1>
+      <span style="font:600 10px/1 'JetBrains Mono',monospace;color:#0B6F68;background:#E7F6F5;border-radius:4px;padding:4px 6px">DIRECT</span>
+      <span style="margin-left:auto;padding:8px 13px;border:1px solid #DCE1E7;border-radius:7px;font:500 12.5px/1 Inter,sans-serif;color:#3A4250">Compare</span>
+      <span style="padding:8px 13px;background:#10B2A6;border-radius:7px;font:600 12.5px/1 Inter,sans-serif;color:#fff">Explore this</span>
+    </div>
+    <div style="font:400 12.5px/1 'JetBrains Mono',monospace;color:#98A1AC;margin-bottom:20px">mixpanel.com · sentiment 66 · 107 reviews · verified 4 h ago</div>
+
+    <div style="border:1px solid #DCE1E7;border-radius:9px;margin-bottom:12px">
+      <div style="padding:13px 16px;border-bottom:1px solid #F0F2F5;display:flex;justify-content:space-between"><span style="font:600 13px/1 Inter,sans-serif;color:#1D2635">Changed since you last looked</span><span style="font:400 11px/1 'JetBrains Mono',monospace;color:#98A1AC">2 changes</span></div>
+      <div style="padding:13px 16px;border-bottom:1px solid #F0F2F5;font:400 13px/1.5 Inter,sans-serif;color:#3A4250">Session replay now listed on the pricing page. <span style="font:500 11px/1 'JetBrains Mono',monospace;color:#63707F;background:#F3F5F7;border:1px solid #E6EAEE;border-radius:5px;padding:3px 6px;margin-left:4px">pricing page · 2 Aug</span></div>
+      <div style="padding:13px 16px;font:400 13px/1.5 Inter,sans-serif;color:#3A4250">Two G2 reviews complain about warehouse sync limits. <span style="font:500 11px/1 'JetBrains Mono',monospace;color:#63707F;background:#F3F5F7;border:1px solid #E6EAEE;border-radius:5px;padding:3px 6px;margin-left:4px">G2 · 31 Jul</span></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div style="border:1px solid #DCE1E7;border-radius:9px;padding:16px"><div style="font:600 12.5px/1 Inter,sans-serif;color:#1D2635;margin-bottom:10px">Where they beat you</div><div style="font:400 12.5px/1.7 Inter,sans-serif;color:#63707F">Warehouse-native modelling · Free tier depth · Session replay</div></div>
+      <div style="border:1px solid #DCE1E7;border-radius:9px;padding:16px"><div style="font:600 12.5px/1 Inter,sans-serif;color:#1D2635;margin-bottom:10px">Where you beat them</div><div style="font:400 12.5px/1.7 Inter,sans-serif;color:#63707F">Time to first dashboard · Governance · Support responsiveness</div></div>
+    </div>
+
+    <div style="border:1px solid #DCE1E7;border-radius:9px">
+      <div style="padding:13px 16px;border-bottom:1px solid #F0F2F5;font:600 13px/1 Inter,sans-serif;color:#1D2635">Deep dives filed here</div>
+      <div style="padding:12px 16px;border-bottom:1px solid #F0F2F5;display:flex;align-items:center;gap:10px"><span style="flex:1;font:400 13px/1.4 Inter,sans-serif;color:#3A4250">Could we match warehouse-native modelling in two quarters?</span><span style="font:400 11px/1 'JetBrains Mono',monospace;color:#98A1AC">28 Jul · filed</span></div>
+      <div style="padding:12px 16px;display:flex;align-items:center;gap:10px"><span style="flex:1;font:400 13px/1.4 Inter,sans-serif;color:#3A4250">Replay: buy, partner or ignore</span><span style="font:500 11px/1 'JetBrains Mono',monospace;color:#0B6F68">open</span></div>
+    </div>
+  </div>
+
+  <div style="width:352px;flex:none;display:flex;flex-direction:column;background:#FBFCFC">
+    <div style="padding:16px 18px;border-bottom:1px solid #E6EAEE;display:flex;align-items:center;justify-content:space-between"><span style="font:600 13px/1 Inter,sans-serif;color:#1D2635">Deep dive</span><span style="font:400 11px/1 'JetBrains Mono',monospace;color:#98A1AC">competitive specialist</span></div>
+    <div style="flex:1;padding:16px 18px;display:flex;flex-direction:column;gap:14px">
+      <div style="font:400 12.5px/1.6 Inter,sans-serif;color:#3A4250;background:#fff;border:1px solid #E6EAEE;border-radius:8px;padding:12px">Replay: buy, partner or ignore</div>
+      <div style="font:400 12.5px/1.65 Inter,sans-serif;color:#3A4250">You already ship 3 of the 5 capabilities buyers cite alongside replay. The gap is storage cost, not analysis.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px"><span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#63707F;background:#F3F5F7;border:1px solid #E6EAEE;border-radius:5px;padding:4px 6px">142 features</span><span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#63707F;background:#F3F5F7;border:1px solid #E6EAEE;border-radius:5px;padding:4px 6px">pillar 2</span><span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#63707F;background:#F3F5F7;border:1px solid #E6EAEE;border-radius:5px;padding:4px 6px">9 reviews</span></div>
+      <div style="border-top:1px solid #E6EAEE;padding-top:12px;font:400 12.5px/1.6 Inter,sans-serif;color:#63707F">Suggested next: check whether replay appears in your feedback themes at all.</div>
+    </div>
+    <div style="padding:14px 18px;border-top:1px solid #E6EAEE;display:flex;flex-direction:column;gap:9px">
+      <div style="height:36px;border:1px solid #DCE1E7;background:#fff;border-radius:7px;display:flex;align-items:center;padding:0 12px;font:400 12.5px/1 Inter,sans-serif;color:#B6BEC7">Ask the specialist…</div>
+      <div style="display:flex;gap:8px"><div style="flex:1;text-align:center;padding:8px;background:#10B2A6;border-radius:7px;font:600 12px/1 Inter,sans-serif;color:#fff">File under Mixpanel</div><div style="padding:8px 12px;border:1px solid #DCE1E7;background:#fff;border-radius:7px;font:500 12px/1 Inter,sans-serif;color:#3A4250">Discard</div></div>
+    </div>
+  </div>
+</div>
+</div>
+</div>
+
+<!-- ============ 1b ============ -->
+<div class="dv-opt" id="1b">
+<div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a><span><strong style="font-weight:600;color:#1a1a1a">The briefing</strong> · refined · no sidebar, ⌘K is the navigation, agent writes into the page</span></div>
+
+<div class="dv-card" style="width:1440px">
+<div style="height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;background:#F7F8F9;border-bottom:1px solid #E6EAEE"><span style="width:11px;height:11px;border-radius:50%;background:#E1E4E8"></span><span style="width:11px;height:11px;border-radius:50%;background:#E1E4E8"></span><span style="width:11px;height:11px;border-radius:50%;background:#E1E4E8"></span></div>
+<div style="height:866px;background:#FCFCFB;display:flex;flex-direction:column">
+  <div style="height:48px;flex:none;display:flex;align-items:center;padding:0 20px;border-bottom:1px solid #EEF0F2">
+    <span style="width:9px;height:9px;border-radius:50%;background:#10B2A6"></span>
+    <div style="margin:0 auto;width:420px;height:32px;border:1px solid #E4E7EB;background:#fff;border-radius:8px;display:flex;align-items:center;justify-content:space-between;padding:0 11px"><span style="font:400 12.5px/1 Inter,sans-serif;color:#98A1AC">Go anywhere, ask anything</span><span style="font:500 11px/1 'JetBrains Mono',monospace;color:#B6BEC7">⌘K</span></div>
+    <span style="font:400 11px/1 'JetBrains Mono',monospace;color:#98A1AC">Mon 3 Aug</span>
+  </div>
+
+  <div style="flex:1;overflow:hidden;display:flex;justify-content:center;padding:44px 0">
+   <div style="width:720px">
+    <div style="font:600 11px/1 'JetBrains Mono',monospace;letter-spacing:.09em;text-transform:uppercase;color:#A8AFB8;margin-bottom:16px">Your context, this morning</div>
+    <p style="margin:0 0 34px;font:400 21px/1.5 Inter,sans-serif;letter-spacing:-.01em;color:#1D2635;text-wrap:pretty">Everything is current except <span style="border-bottom:2px solid #F5C34E">customer feedback</span>, last verified 19 days ago. Three things happened that touch your strategy.</p>
+
+    <div style="display:flex;flex-direction:column;gap:2px;margin-bottom:34px">
+      <div style="padding:20px 0;border-top:1px solid #EAECEF">
+        <div style="display:flex;gap:14px">
+          <span style="font:500 12px/1.6 'JetBrains Mono',monospace;color:#C0C6CD;flex:none;width:18px">01</span>
+          <div style="flex:1">
+            <div style="font:400 15px/1.6 Inter,sans-serif;color:#1D2635;margin-bottom:9px">Mixpanel put session replay on its pricing page. It touches <span style="color:#0E8F86">pillar 2</span>, and you already ship three of the five capabilities buyers name alongside it.</div>
+            <div style="display:flex;align-items:center;gap:9px"><span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#63707F;background:#F1F3F5;border-radius:5px;padding:4px 7px">2 sources</span><span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#63707F;background:#F1F3F5;border-radius:5px;padding:4px 7px">142 features</span><span style="font:500 12.5px/1 Inter,sans-serif;color:#0E8F86">Explore this →</span></div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:20px 0;border-top:1px solid #EAECEF">
+        <div style="display:flex;gap:14px">
+          <span style="font:500 12px/1.6 'JetBrains Mono',monospace;color:#C0C6CD;flex:none;width:18px">02</span>
+          <div style="flex:1">
+            <div style="font:400 15px/1.6 Inter,sans-serif;color:#1D2635;margin-bottom:9px">"Slow dashboard load" reached 41 mentions with nothing on the roadmap against it. I've drafted a suggestion, unsent.</div>
+            <div style="display:flex;align-items:center;gap:9px"><span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#63707F;background:#F1F3F5;border-radius:5px;padding:4px 7px">41 feedback items</span><span style="font:500 12.5px/1 Inter,sans-serif;color:#0E8F86">Read the draft →</span></div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:20px 0;border-top:1px solid #EAECEF;border-bottom:1px solid #EAECEF">
+        <div style="display:flex;gap:14px">
+          <span style="font:500 12px/1.6 'JetBrains Mono',monospace;color:#C0C6CD;flex:none;width:18px">03</span>
+          <div style="flex:1">
+            <div style="font:400 15px/1.6 Inter,sans-serif;color:#1D2635;margin-bottom:9px">Two Q3 initiatives duplicate capability already in your feature inventory. Worth a look before planning closes.</div>
+            <div style="display:flex;align-items:center;gap:9px"><span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#63707F;background:#F1F3F5;border-radius:5px;padding:4px 7px">Jira · 27 initiatives</span><span style="font:500 12.5px/1 Inter,sans-serif;color:#0E8F86">See the review →</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="border:1px solid #E4E7EB;background:#fff;border-radius:10px;padding:16px 18px;margin-bottom:30px">
+      <div style="font:400 14px/1 Inter,sans-serif;color:#B6BEC7">Test a product idea, or ask about anything above…</div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:22px;flex-wrap:wrap">
+      <span style="font:600 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#B6BEC7">Context</span>
+      <span style="display:flex;align-items:center;gap:6px;font:400 12.5px/1 Inter,sans-serif;color:#3A4250"><span style="width:6px;height:6px;border-radius:50%;background:#10B77F"></span>Competitors · 4</span>
+      <span style="display:flex;align-items:center;gap:6px;font:400 12.5px/1 Inter,sans-serif;color:#3A4250"><span style="width:6px;height:6px;border-radius:50%;background:#F5A209"></span>Customers · 3 segments</span>
+      <span style="display:flex;align-items:center;gap:6px;font:400 12.5px/1 Inter,sans-serif;color:#3A4250"><span style="width:6px;height:6px;border-radius:50%;background:#10B77F"></span>Strategy · 4 pillars</span>
+      <span style="display:flex;align-items:center;gap:6px;font:400 12.5px/1 Inter,sans-serif;color:#3A4250"><span style="width:6px;height:6px;border-radius:50%;background:#10B77F"></span>Roadmap · 27 items</span>
+      <span style="display:flex;align-items:center;gap:6px;font:400 12.5px/1 Inter,sans-serif;color:#3A4250"><span style="width:6px;height:6px;border-radius:50%;background:#10B77F"></span>Features · 142</span>
+    </div>
+   </div>
+  </div>
+
+  <div style="height:30px;flex:none;border-top:1px solid #EEF0F2;background:#fff;display:flex;align-items:center;gap:16px;padding:0 18px;font:400 11px/1 'JetBrains Mono',monospace;color:#8A939E"><span style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:#10B77F"></span>Local · 42 MB</span><span>Claude 118 · Cursor 22 this week</span><span>MCP :7317</span><span style="margin-left:auto">2 teammates reading · Connect another</span></div>
+</div>
+</div>
+
+<div class="dv-olabel" style="margin-top:6px"><span style="font-weight:600;color:#1a1a1a">Day one</span><span>— one sentence, one field, nothing else on screen</span></div>
+<div class="dv-card" style="width:1440px">
+<div style="height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;background:#F7F8F9;border-bottom:1px solid #E6EAEE"><span style="width:11px;height:11px;border-radius:50%;background:#E1E4E8"></span><span style="width:11px;height:11px;border-radius:50%;background:#E1E4E8"></span><span style="width:11px;height:11px;border-radius:50%;background:#E1E4E8"></span></div>
+<div style="height:566px;background:#FCFCFB;display:flex;flex-direction:column">
+  <div style="height:48px;flex:none;display:flex;align-items:center;padding:0 20px;border-bottom:1px solid #EEF0F2"><span style="width:9px;height:9px;border-radius:50%;background:#10B2A6"></span></div>
+  <div style="flex:1;display:flex;justify-content:center;align-items:center">
+    <div style="width:600px">
+      <p style="margin:0 0 26px;font:400 24px/1.45 Inter,sans-serif;letter-spacing:-.015em;color:#1D2635;text-wrap:pretty">Give me your product's URL and I'll build the first draft of your context.</p>
+      <div style="display:flex;gap:10px;margin-bottom:14px"><div style="flex:1;height:46px;border:1px solid #E4E7EB;background:#fff;border-radius:9px;display:flex;align-items:center;padding:0 14px;font:400 14px/1 Inter,sans-serif;color:#B6BEC7">https://</div><div style="padding:0 20px;height:46px;display:flex;align-items:center;background:#10B2A6;border-radius:9px;font:600 14px/1 Inter,sans-serif;color:#fff">Begin</div></div>
+      <div style="font:400 12.5px/1.65 Inter,sans-serif;color:#98A1AC">Roughly four minutes: help centre, releases and changelog get read, then I'll propose competitors for you to keep or drop.</div>
+    </div>
+  </div>
+  <div style="height:30px;flex:none;border-top:1px solid #EEF0F2;background:#fff;display:flex;align-items:center;gap:16px;padding:0 18px;font:400 11px/1 'JetBrains Mono',monospace;color:#8A939E"><span style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:#10B77F"></span>Local · nothing sent anywhere</span><span>Works offline</span></div>
+</div>
+</div>
+
+<div class="dv-olabel" style="margin-top:6px"><span style="font-weight:600;color:#1a1a1a">Module overview + thread</span><span>— ⌘K open over the competitors view; a deep dive grows in the same column and files itself</span></div>
+<div class="dv-card" style="width:1440px">
+<div style="height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;background:#F7F8F9;border-bottom:1px solid #E6EAEE"><span style="width:11px;height:11px;border-radius:50%;background:#E1E4E8"></span><span style="width:11px;height:11px;border-radius:50%;background:#E1E4E8"></span><span style="width:11px;height:11px;border-radius:50%;background:#E1E4E8"></span></div>
+<div style="height:700px;background:#FCFCFB;display:flex;flex-direction:column;position:relative">
+  <div style="height:48px;flex:none;display:flex;align-items:center;padding:0 20px;border-bottom:1px solid #EEF0F2"><span style="width:9px;height:9px;border-radius:50%;background:#10B2A6"></span><div style="margin:0 auto;width:420px;height:32px;border:1px solid #10B2A6;background:#fff;border-radius:8px;display:flex;align-items:center;padding:0 11px;box-shadow:0 0 0 3px rgba(16,178,166,.12)"><span style="font:400 12.5px/1 Inter,sans-serif;color:#1D2635">warehouse</span></div><span style="font:400 11px/1 'JetBrains Mono',monospace;color:#98A1AC">Mon 3 Aug</span></div>
+
+  <div style="flex:1;display:flex;justify-content:center;padding:40px 0;overflow:hidden">
+   <div style="width:720px">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:22px"><h1 style="margin:0;font:600 22px/1.2 Inter,sans-serif;letter-spacing:-.02em;color:#1D2635">Competitors</h1><span style="font:400 11.5px/1 'JetBrains Mono',monospace;color:#98A1AC">4 tracked · cards / table</span></div>
+    <div style="display:flex;flex-direction:column">
+      <div style="padding:16px 0;border-top:1px solid #EAECEF;display:flex;gap:14px;align-items:baseline"><span style="width:118px;flex:none;font:600 14.5px/1.4 Inter,sans-serif;color:#1D2635">Mixpanel</span><span style="flex:1;font:400 13.5px/1.6 Inter,sans-serif;color:#3A4250">Added session replay to pricing this week. Still ahead on warehouse-native modelling.</span><span style="font:500 11px/1 'JetBrains Mono',monospace;color:#98A1AC">66</span></div>
+      <div style="padding:16px 0;border-top:1px solid #EAECEF;display:flex;gap:14px;align-items:baseline"><span style="width:118px;flex:none;font:600 14.5px/1.4 Inter,sans-serif;color:#1D2635">Amplitude</span><span style="flex:1;font:400 13.5px/1.6 Inter,sans-serif;color:#3A4250">Quiet for six weeks. Reviews still cite onboarding difficulty.</span><span style="font:500 11px/1 'JetBrains Mono',monospace;color:#98A1AC">71</span></div>
+      <div style="padding:16px 0;border-top:1px solid #EAECEF;border-bottom:1px solid #EAECEF;display:flex;gap:14px;align-items:baseline"><span style="width:118px;flex:none;font:600 14.5px/1.4 Inter,sans-serif;color:#1D2635">Heap</span><span style="flex:1;font:400 13.5px/1.6 Inter,sans-serif;color:#3A4250">Repositioned around digital insights; two pricing tiers withdrawn.</span><span style="font:500 11px/1 'JetBrains Mono',monospace;color:#98A1AC">58</span></div>
+    </div>
+
+    <div style="margin-top:30px;border-left:2px solid #10B2A6;padding-left:20px">
+      <div style="font:600 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#10B2A6;margin-bottom:12px">Deep dive · open</div>
+      <div style="font:500 15.5px/1.5 Inter,sans-serif;color:#1D2635;margin-bottom:12px">Could we match warehouse-native modelling in two quarters?</div>
+      <div style="font:400 13.5px/1.7 Inter,sans-serif;color:#3A4250;margin-bottom:12px">Your inventory already covers ingestion and transform scheduling. What's missing is reverse-ETL and a semantic layer, and both appear in your feedback under a different name.</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px"><span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#63707F;background:#F1F3F5;border-radius:5px;padding:4px 7px">142 features</span><span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#63707F;background:#F1F3F5;border-radius:5px;padding:4px 7px">theme: data plumbing</span><span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#63707F;background:#F1F3F5;border-radius:5px;padding:4px 7px">pillar 2</span></div>
+      <div style="display:flex;gap:9px"><div style="padding:8px 13px;background:#10B2A6;border-radius:7px;font:600 12.5px/1 Inter,sans-serif;color:#fff">File under Mixpanel</div><div style="padding:8px 13px;border:1px solid #DCE1E7;background:#fff;border-radius:7px;font:500 12.5px/1 Inter,sans-serif;color:#3A4250">Keep asking</div></div>
+    </div>
+   </div>
+  </div>
+
+  <div style="position:absolute;top:56px;left:50%;transform:translateX(-50%);width:520px;background:#fff;border:1px solid #DCE1E7;border-radius:10px;box-shadow:0 16px 40px rgba(29,38,53,.16);overflow:hidden">
+    <div style="padding:9px 13px;border-bottom:1px solid #F0F2F5;font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#A8AFB8">Objects</div>
+    <div style="padding:10px 13px;background:#F4FAFA;display:flex;justify-content:space-between"><span style="font:500 13px/1 Inter,sans-serif;color:#1D2635">Warehouse-native modelling — capability gap</span><span style="font:400 11px/1 'JetBrains Mono',monospace;color:#98A1AC">Mixpanel</span></div>
+    <div style="padding:10px 13px;display:flex;justify-content:space-between"><span style="font:400 13px/1 Inter,sans-serif;color:#3A4250">Data plumbing — feedback theme</span><span style="font:400 11px/1 'JetBrains Mono',monospace;color:#98A1AC">62 items</span></div>
+    <div style="padding:9px 13px;border-top:1px solid #F0F2F5;border-bottom:1px solid #F0F2F5;font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#A8AFB8">Ask</div>
+    <div style="padding:10px 13px;font:400 13px/1 Inter,sans-serif;color:#3A4250">Explore "warehouse" with a specialist →</div>
+  </div>
+
+  <div style="height:30px;flex:none;border-top:1px solid #EEF0F2;background:#fff;display:flex;align-items:center;gap:16px;padding:0 18px;font:400 11px/1 'JetBrains Mono',monospace;color:#8A939E"><span style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:#10B77F"></span>Local · 42 MB</span><span>Agents idle</span><span>MCP :7317</span></div>
+</div>
+</div>
+</div>
+
+<!-- ============ 1c ============ -->
+<div class="dv-opt" id="1c">
+<div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a><span><strong style="font-weight:600;color:#1a1a1a">Triage workbench</strong> · experimental · icon rail + queue + detail, thread panel always present, home is an inbox you can finish</span></div>
+
+<div class="dv-card" style="width:1440px">
+<div style="height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;background:#20262E;border-bottom:1px solid #2C333C"><span style="width:11px;height:11px;border-radius:50%;background:#3A424C"></span><span style="width:11px;height:11px;border-radius:50%;background:#3A424C"></span><span style="width:11px;height:11px;border-radius:50%;background:#3A424C"></span><span style="margin-left:10px;font:500 11px/1 Inter,sans-serif;color:#7C8794">Discoveree — Analytics Platform Pro</span></div>
+<div style="display:flex;height:866px;background:#fff">
+
+  <div style="width:56px;flex:none;background:#20262E;display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:6px">
+    <div style="width:26px;height:26px;border-radius:7px;background:#10B2A6;margin-bottom:8px"></div>
+    <div style="width:36px;height:34px;border-radius:8px;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font:600 11px/1 'JetBrains Mono',monospace;color:#fff">IN</div>
+    <div style="width:36px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font:500 11px/1 'JetBrains Mono',monospace;color:#7C8794">CI</div>
+    <div style="width:36px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font:500 11px/1 'JetBrains Mono',monospace;color:#7C8794">CU</div>
+    <div style="width:36px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font:500 11px/1 'JetBrains Mono',monospace;color:#7C8794">ST</div>
+    <div style="width:36px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font:500 11px/1 'JetBrains Mono',monospace;color:#7C8794">RM</div>
+    <div style="margin-top:auto;width:36px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font:500 11px/1 'JetBrains Mono',monospace;color:#7C8794">⚙</div>
+  </div>
+
+  <div style="width:352px;flex:none;border-right:1px solid #E6EAEE;display:flex;flex-direction:column">
+    <div style="padding:18px 18px 14px;border-bottom:1px solid #E6EAEE">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px"><span style="font:600 16px/1.2 Inter,sans-serif;color:#1D2635">Needs attention</span><span style="font:600 12px/1 'JetBrains Mono',monospace;color:#0B6F68;background:#E7F6F5;border-radius:5px;padding:4px 7px">7</span></div>
+      <div style="font:400 12px/1.5 Inter,sans-serif;color:#98A1AC">Clear this and your context is current. Roughly 12 minutes.</div>
+    </div>
+    <div style="flex:1;overflow:hidden">
+      <div style="padding:14px 18px;border-bottom:1px solid #F0F2F5;background:#F4FAFA;border-left:2px solid #10B2A6">
+        <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:.06em;color:#0B6F68">SUGGESTION</span><span style="font:400 10.5px/1 'JetBrains Mono',monospace;color:#98A1AC">2 h</span></div>
+        <div style="font:500 13px/1.45 Inter,sans-serif;color:#1D2635">Add "Dashboard load performance" to the roadmap</div>
+        <div style="margin-top:5px;font:400 12px/1.45 Inter,sans-serif;color:#63707F">41 feedback items, no coverage</div>
+      </div>
+      <div style="padding:14px 18px;border-bottom:1px solid #F0F2F5">
+        <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:.06em;color:#8A5A02">STALE</span><span style="font:400 10.5px/1 'JetBrains Mono',monospace;color:#98A1AC">19 d</span></div>
+        <div style="font:500 13px/1.45 Inter,sans-serif;color:#1D2635">Customer feedback has no live source</div>
+        <div style="margin-top:5px;font:400 12px/1.45 Inter,sans-serif;color:#63707F">Reconnect Zendesk or add a file</div>
+      </div>
+      <div style="padding:14px 18px;border-bottom:1px solid #F0F2F5">
+        <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:.06em;color:#3A4250">COMPETITOR MOVE</span><span style="font:400 10.5px/1 'JetBrains Mono',monospace;color:#98A1AC">1 d</span></div>
+        <div style="font:500 13px/1.45 Inter,sans-serif;color:#1D2635">Mixpanel now lists session replay</div>
+        <div style="margin-top:5px;font:400 12px/1.45 Inter,sans-serif;color:#63707F">Confirm or correct what the agent believes</div>
+      </div>
+      <div style="padding:14px 18px;border-bottom:1px solid #F0F2F5">
+        <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:.06em;color:#8A5A02">CONFLICT</span><span style="font:400 10.5px/1 'JetBrains Mono',monospace;color:#98A1AC">1 d</span></div>
+        <div style="font:500 13px/1.45 Inter,sans-serif;color:#1D2635">Two Q3 initiatives duplicate shipped capability</div>
+        <div style="margin-top:5px;font:400 12px/1.45 Inter,sans-serif;color:#63707F">Feature inventory disagrees with Jira</div>
+      </div>
+      <div style="padding:14px 18px;border-bottom:1px solid #F0F2F5">
+        <div style="display:flex;justify-content:space-between;margin-bottom:5px"><span style="font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:.06em;color:#3A4250">LOW CONFIDENCE</span><span style="font:400 10.5px/1 'JetBrains Mono',monospace;color:#98A1AC">3 d</span></div>
+        <div style="font:500 13px/1.45 Inter,sans-serif;color:#1D2635">Enterprise segment revenue is a guess</div>
+        <div style="margin-top:5px;font:400 12px/1.45 Inter,sans-serif;color:#63707F">One weak source · confidence 0.4</div>
+      </div>
+      <div style="padding:14px 18px;font:400 12.5px/1 Inter,sans-serif;color:#98A1AC">2 more · all cleared items file to Sources</div>
+    </div>
+    <div style="padding:12px 18px;border-top:1px solid #E6EAEE;font:400 11px/1 'JetBrains Mono',monospace;color:#98A1AC">82% complete · 42 MB local</div>
+  </div>
+
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+    <div style="flex:1;padding:26px 30px;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><span style="font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:.06em;color:#0B6F68;background:#E7F6F5;border-radius:4px;padding:4px 6px">SUGGESTION</span><span style="font:400 11.5px/1 'JetBrains Mono',monospace;color:#98A1AC">drafted by the roadmap agent · 2 h ago · not sent</span></div>
+      <h1 style="margin:0 0 12px;font:600 23px/1.25 Inter,sans-serif;letter-spacing:-.02em;color:#1D2635;max-width:640px">Add "Dashboard load performance" to the roadmap</h1>
+      <p style="margin:0 0 22px;font:400 14px/1.65 Inter,sans-serif;color:#3A4250;max-width:640px">41 feedback items across two segments describe the same complaint, and nothing in your 27 tracked initiatives addresses it. Two competitors advertise sub-second dashboards.</p>
+
+      <div style="border:1px solid #DCE1E7;border-radius:9px;margin-bottom:18px;max-width:720px">
+        <div style="padding:12px 16px;border-bottom:1px solid #F0F2F5;font:600 12.5px/1 Inter,sans-serif;color:#1D2635">Evidence</div>
+        <div style="padding:11px 16px;border-bottom:1px solid #F0F2F5;display:flex;gap:12px"><span style="width:120px;flex:none;font:500 11px/1.4 'JetBrains Mono',monospace;color:#98A1AC">feedback</span><span style="flex:1;font:400 12.5px/1.5 Inter,sans-serif;color:#3A4250">41 items · theme "slow dashboard load" · Enterprise, Mid-market</span></div>
+        <div style="padding:11px 16px;border-bottom:1px solid #F0F2F5;display:flex;gap:12px"><span style="width:120px;flex:none;font:500 11px/1.4 'JetBrains Mono',monospace;color:#98A1AC">pillar</span><span style="flex:1;font:400 12.5px/1.5 Inter,sans-serif;color:#3A4250">Pillar 3 — "trustworthy at scale"</span></div>
+        <div style="padding:11px 16px;border-bottom:1px solid #F0F2F5;display:flex;gap:12px"><span style="width:120px;flex:none;font:500 11px/1.4 'JetBrains Mono',monospace;color:#98A1AC">competitors</span><span style="flex:1;font:400 12.5px/1.5 Inter,sans-serif;color:#3A4250">Mixpanel, Heap — both claim sub-second dashboards</span></div>
+        <div style="padding:11px 16px;display:flex;gap:12px"><span style="width:120px;flex:none;font:500 11px/1.4 'JetBrains Mono',monospace;color:#98A1AC">inventory</span><span style="flex:1;font:400 12.5px/1.5 Inter,sans-serif;color:#3A4250">No shipped feature matches · nearest is "query cache" (2024)</span></div>
+      </div>
+
+      <div style="display:flex;gap:9px;align-items:center">
+        <div style="padding:10px 16px;background:#10B2A6;border:1px solid #0E9E93;border-radius:7px;font:600 13px/1 Inter,sans-serif;color:#fff">Accept → create in Jira</div>
+        <div style="padding:10px 14px;border:1px solid #DCE1E7;border-radius:7px;font:500 13px/1 Inter,sans-serif;color:#3A4250">Edit first</div>
+        <div style="padding:10px 14px;border:1px solid #DCE1E7;border-radius:7px;font:500 13px/1 Inter,sans-serif;color:#3A4250">Dismiss</div>
+        <span style="margin-left:6px;font:400 11.5px/1 Inter,sans-serif;color:#98A1AC">Nothing is written to Jira until you accept.</span>
+      </div>
+    </div>
+    <div style="height:30px;flex:none;border-top:1px solid #E6EAEE;background:#FBFCFC;display:flex;align-items:center;gap:16px;padding:0 18px;font:400 11px/1 'JetBrains Mono',monospace;color:#8A939E"><span style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:#10B77F"></span>Local</span><span>Jira polled 11 min ago</span><span>MCP :7317 · Claude 118</span><span style="margin-left:auto">Works offline</span></div>
+  </div>
+
+  <div style="width:320px;flex:none;border-left:1px solid #E6EAEE;background:#FBFCFC;display:flex;flex-direction:column">
+    <div style="padding:15px 16px;border-bottom:1px solid #E6EAEE;display:flex;justify-content:space-between"><span style="font:600 12.5px/1 Inter,sans-serif;color:#1D2635">Thread</span><span style="font:400 10.5px/1 'JetBrains Mono',monospace;color:#98A1AC">roadmap specialist</span></div>
+    <div style="flex:1;padding:15px 16px;display:flex;flex-direction:column;gap:13px">
+      <div style="font:400 12.5px/1.6 Inter,sans-serif;color:#3A4250">Ask me anything about this suggestion, or send it deeper.</div>
+      <div style="border:1px solid #E6EAEE;background:#fff;border-radius:8px;padding:11px;font:400 12.5px/1.55 Inter,sans-serif;color:#3A4250">Is the complaint about load time or about query time?</div>
+      <div style="font:400 12.5px/1.65 Inter,sans-serif;color:#3A4250">31 of 41 mention the first dashboard after login, which points at cold-start rather than query cost.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px"><span style="font:500 10.5px/1 'JetBrains Mono',monospace;color:#63707F;background:#F1F3F5;border:1px solid #E6EAEE;border-radius:5px;padding:4px 6px">31 items</span></div>
+      <div style="margin-top:6px;padding:11px;border:1px dashed #C6D8D6;border-radius:8px;font:400 12px/1.55 Inter,sans-serif;color:#63707F">Spawn a deep dive from here — it files under this suggestion and becomes context.</div>
+    </div>
+    <div style="padding:13px 16px;border-top:1px solid #E6EAEE"><div style="height:34px;border:1px solid #DCE1E7;background:#fff;border-radius:7px;display:flex;align-items:center;padding:0 11px;font:400 12.5px/1 Inter,sans-serif;color:#B6BEC7">Reply…</div></div>
+  </div>
+</div>
+</div>
+
+<div class="dv-olabel" style="margin-top:6px"><span style="font-weight:600;color:#1a1a1a">Day one</span><span>— the queue has exactly one item, and the thread panel does the interview</span></div>
+<div class="dv-card" style="width:1440px">
+<div style="height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;background:#20262E;border-bottom:1px solid #2C333C"><span style="width:11px;height:11px;border-radius:50%;background:#3A424C"></span><span style="width:11px;height:11px;border-radius:50%;background:#3A424C"></span><span style="width:11px;height:11px;border-radius:50%;background:#3A424C"></span></div>
+<div style="display:flex;height:566px;background:#fff">
+  <div style="width:56px;flex:none;background:#20262E;display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:6px"><div style="width:26px;height:26px;border-radius:7px;background:#10B2A6;margin-bottom:8px"></div><div style="width:36px;height:34px;border-radius:8px;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font:600 11px/1 'JetBrains Mono',monospace;color:#fff">IN</div><div style="margin-top:auto;width:36px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font:500 11px/1 'JetBrains Mono',monospace;color:#7C8794">⚙</div></div>
+  <div style="width:352px;flex:none;border-right:1px solid #E6EAEE;display:flex;flex-direction:column">
+    <div style="padding:18px 18px 14px;border-bottom:1px solid #E6EAEE"><div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px"><span style="font:600 16px/1.2 Inter,sans-serif;color:#1D2635">Needs attention</span><span style="font:600 12px/1 'JetBrains Mono',monospace;color:#0B6F68;background:#E7F6F5;border-radius:5px;padding:4px 7px">1</span></div><div style="font:400 12px/1.5 Inter,sans-serif;color:#98A1AC">Nothing else exists yet.</div></div>
+    <div style="padding:14px 18px;background:#F4FAFA;border-left:2px solid #10B2A6;border-bottom:1px solid #F0F2F5"><div style="font:600 10px/1 'JetBrains Mono',monospace;letter-spacing:.06em;color:#0B6F68;margin-bottom:5px">SET UP</div><div style="font:500 13px/1.45 Inter,sans-serif;color:#1D2635">Tell me about your product</div><div style="margin-top:5px;font:400 12px/1.45 Inter,sans-serif;color:#63707F">One URL, then five questions</div></div>
+  </div>
+  <div style="flex:1;padding:26px 30px"><h1 style="margin:0 0 12px;font:600 23px/1.25 Inter,sans-serif;letter-spacing:-.02em;color:#1D2635">Tell me about your product</h1><p style="margin:0 0 20px;font:400 14px/1.65 Inter,sans-serif;color:#3A4250;max-width:560px">Give me a URL. I'll read your help centre, releases and changelog, then propose competitors. You keep or drop each one.</p><div style="display:flex;gap:9px;max-width:520px"><div style="flex:1;height:42px;border:1px solid #DCE1E7;border-radius:8px;display:flex;align-items:center;padding:0 13px;font:400 13.5px/1 Inter,sans-serif;color:#B6BEC7">https://</div><div style="padding:0 18px;height:42px;display:flex;align-items:center;background:#10B2A6;border-radius:8px;font:600 13.5px/1 Inter,sans-serif;color:#fff">Start</div></div><div style="margin-top:22px;font:400 11.5px/1.6 Inter,sans-serif;color:#98A1AC;max-width:520px">Step 1 of 5 · next: what should Discoveree do, your AI tools, your data tools, one LLM key.</div></div>
+  <div style="width:320px;flex:none;border-left:1px solid #E6EAEE;background:#FBFCFC;display:flex;flex-direction:column"><div style="padding:15px 16px;border-bottom:1px solid #E6EAEE;font:600 12.5px/1 Inter,sans-serif;color:#1D2635">Thread</div><div style="flex:1;padding:15px 16px;font:400 12.5px/1.65 Inter,sans-serif;color:#63707F">The interview happens here, in the same panel you'll use for every deep dive later. Nothing to show until you begin.</div></div>
+</div>
+</div>
+</div>
+
+</div>
+
+<p class="dv-next">Try next: "build out Roadmap Review, onboarding and a segment object in <a class="dv-oid" href="#1c">1c</a>" · "take <a class="dv-oid" href="#1b">1b</a>'s briefing copy into <a class="dv-oid" href="#1a">1a</a>'s shell" · "show <a class="dv-oid" href="#1c">1c</a> in dark mode"</p>
+</section>
+
+</x-dc>
+</body>
+</html>
