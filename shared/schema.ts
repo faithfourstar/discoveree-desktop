@@ -27,6 +27,18 @@
  *   competitor_threat_level_history profile/product,
  *   customer_call_recordings segment).
  *
+ * ADR 004 (Customer Insights port) baseline cleanup (§8, owner-approved):
+ * - feedback_entries: teamId and competitorName DROPPED (teams are team-tier;
+ *   name-keying is the drift bug ADR 003 §2.4 fixed for changes);
+ *   competitorEntityId added (the ADR 003 §2.8 "noted, not built" column).
+ * - feedback_themes: teamId, isCompetitor, competitorName DROPPED (per-product
+ *   competitor themes are cut — entity review themes replace them, ADR 004 §2);
+ *   aliases/confidence/coherence added (§3.5/§3.6).
+ * - team_assignment_signals table DROPPED entirely.
+ * - customer_segment_profiles.status + persona_facets.status ('proposed' |
+ *   'tracked') and provenance ('owner' | 'agent') on personas/persona_facets
+ *   (§7 gate ruling).
+ *
  * ADR 003 (multi-product entities) baseline rewrite:
  * - `competitor_entities` (org-level canonical competitor identity + facts +
  *   monitoring state; two-level self-referencing tree via parentEntityId).
@@ -1082,50 +1094,62 @@ export const competitiveLandscapes = pgTable("competitive_landscapes", {
 
 export const insertCompetitiveLandscapeSchema = createInsertSchema(competitiveLandscapes).omit({ id: true, createdAt: true, updatedAt: true });
 
-// Feedback Entries - Raw feedback comments from review sites
+// Feedback Entries — raw feedback (manual add + web-mined reviews). Strictly
+// product-scoped (ADR 003 §2.8). ADR 004 §8 cleanup: teamId and the name-keyed
+// competitorName are DROPPED; competitor attribution is competitorEntityId.
 export const feedbackEntries = pgTable("feedback_entries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   productId: varchar("product_id").notNull(), // The product this feedback is about
-  teamId: varchar("team_id"), // Optional team assignment based on focus area
   isCompetitor: boolean("is_competitor").notNull().default(false), // Whether this is about a competitor
-  competitorName: text("competitor_name"), // Name of competitor if isCompetitor=true
-  sourceName: text("source_name").notNull(), // e.g., "G2", "Capterra", "TrustRadius"
+  competitorEntityId: varchar("competitor_entity_id"), // -> competitor_entities.id when isCompetitor (ADR 004 §2 cross-allocation)
+  sourceName: text("source_name").notNull(), // e.g., "G2", "Capterra", "TrustRadius", "Manual"
   sourceUrl: text("source_url"), // Link to the original review
-  sourceType: text("source_type").notNull().default("review"), // review, comparison, forum
+  sourceType: text("source_type").notNull().default("review"), // review, comparison, forum, manual
   verified: boolean("verified").notNull().default(false), // Whether the sourceUrl has been verified to work
   collectedAt: timestamp("collected_at").notNull().defaultNow(), // When the feedback was collected
   topic: text("topic"), // Feature/topic this relates to
   quotedText: text("quoted_text").notNull(), // The actual feedback comment
   sentiment: integer("sentiment"), // 0-100 sentiment score
   reviewerName: text("reviewer_name"), // Optional reviewer attribution
-  reviewDate: timestamp("review_date"), // Date of original review
+  // Date discipline (owner ruling, 4 Aug 2026 — ADR 004 §3 addendum, see
+  // modules/customers/evidence.ts): when the feedback was AUTHORED at its
+  // source (review date, message date); null when the source provides none.
+  // collectedAt is ingestion time. Every recency/trend computation uses
+  // effectiveDate = sourceCreatedAt ?? (manual ? collectedAt : null); undated
+  // mined entries still count as evidence but never as windowed signal.
+  sourceCreatedAt: timestamp("source_created_at"),
   linkedOpportunityId: varchar("linked_opportunity_id"), // ID of linked opportunity (if entry was used to create one)
   archivedAt: timestamp("archived_at"), // When this entry was archived (null = active)
   imageUrl: text("image_url"), // Optional screenshot URL stored in object storage
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("idx_feedback_entries_product_id").on(table.productId),
-  index("idx_feedback_entries_team_id").on(table.teamId),
   index("idx_feedback_entries_product_is_competitor").on(table.productId, table.isCompetitor),
   index("idx_feedback_entries_is_competitor").on(table.isCompetitor),
+  index("idx_feedback_entries_competitor_entity").on(table.competitorEntityId),
   index("idx_feedback_entries_product_collected_at").on(table.productId, table.collectedAt),
   index("idx_feedback_entries_topic").on(table.topic),
 ]);
 
-// Feedback Themes - Aggregated themes from raw feedback
+// Feedback Themes — the stable theme catalogue, maintained CLASSIFY-FIRST
+// (ADR 004 §3.6): themes are the classification input, never re-derived; the
+// agent never writes themeName; rename/merge are human-only, alias-recorded.
+// ADR 004 §8 cleanup: teamId and isCompetitor/competitorName DROPPED
+// (per-product competitor themes are cut — entity review themes replace them).
+// "Unfiled" is a derived state (entries referenced by no theme), no column.
 export const feedbackThemes = pgTable("feedback_themes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   productId: varchar("product_id").notNull(),
-  teamId: varchar("team_id"),
-  isCompetitor: boolean("is_competitor").notNull().default(false),
-  competitorName: text("competitor_name"),
   themeName: text("theme_name").notNull(),
+  aliases: jsonb("aliases"), // string[] — absorbed names from human merges; matching vocabulary forever (§3.6.1 step 7)
   summary: text("summary"),
-  status: text("status").notNull().default("needs_review"),
-  priority: text("priority"), // 'low' | 'medium' | 'high' — set by Theme Aggregation Agent based on uplift
+  status: text("status").notNull().default("needs_review"), // triage flag, NOT a write gate (§7)
+  priority: text("priority"), // 'low' | 'medium' | 'high' — recomputed deterministically from members
   mentionCount: integer("mention_count").notNull().default(0),
   averageSentiment: integer("average_sentiment"),
   feedbackEntryIds: jsonb("feedback_entry_ids"),
+  confidence: integer("confidence"), // elicited 0-100, stored for calibration (§3.5)
+  coherence: integer("coherence"), // elicited 0-100; gates CREATION at ≥70 (§3.6.1 step 4d)
   linkedOpportunityId: varchar("linked_opportunity_id"), // ID of linked opportunity (if theme was used to create one)
   lastUpdatedAt: timestamp("last_updated_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
@@ -1134,22 +1158,8 @@ export const feedbackThemes = pgTable("feedback_themes", {
 export const insertFeedbackEntrySchema = createInsertSchema(feedbackEntries).omit({ id: true, createdAt: true });
 export const insertFeedbackThemeSchema = createInsertSchema(feedbackThemes).omit({ id: true, createdAt: true });
 
-// Team Assignment Signals - Track user corrections to AI team allocation for learning
-export const teamAssignmentSignals = pgTable("team_assignment_signals", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  productId: varchar("product_id").notNull(),
-  signalType: text("signal_type").notNull(), // 'theme_move' | 'feedback_assign' | 'opportunity_move'
-  entityType: text("entity_type").notNull(), // 'theme' | 'feedback' | 'opportunity'
-  entityId: varchar("entity_id").notNull(), // ID of the moved/assigned entity
-  sourceTeamId: varchar("source_team_id"), // Original team (null if unassigned)
-  targetTeamId: varchar("target_team_id").notNull(), // New team assignment
-  themeName: text("theme_name"), // Theme name for theme/feedback signals (for pattern matching)
-  keywords: jsonb("keywords"), // Extracted keywords from feedback/theme for matching
-  userId: varchar("user_id").notNull(), // Who made the correction
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const insertTeamAssignmentSignalSchema = createInsertSchema(teamAssignmentSignals).omit({ id: true, createdAt: true });
+// team_assignment_signals DROPPED (ADR 004 §8 ruling): teams are team-tier;
+// the routing machinery it served (routeFeedbackToTeams) is CUT.
 
 // Feedback Sources - Trusted review and comparison sites for feedback collection
 export const feedbackSources = pgTable("feedback_sources", {
@@ -1381,10 +1391,6 @@ export type ProblemStatementAttachment = typeof problemStatementAttachments.$inf
 export type InsertLlmUsage = z.infer<typeof insertLlmUsageSchema>;
 export type LlmUsage = typeof llmUsage.$inferSelect;
 
-// Team Assignment Signal Types
-export type InsertTeamAssignmentSignal = z.infer<typeof insertTeamAssignmentSignalSchema>;
-export type TeamAssignmentSignal = typeof teamAssignmentSignals.$inferSelect;
-
 // Feedback Source Types
 export type InsertFeedbackSource = z.infer<typeof insertFeedbackSourceSchema>;
 export type FeedbackSource = typeof feedbackSources.$inferSelect;
@@ -1409,12 +1415,14 @@ export const agentSchedulesSchema = z.object({
   competitorUpdates: agentScheduleSchema.optional(), // Competitor news/updates monitoring
   competitorFeatures: agentScheduleSchema.optional(), // Competitor feature analysis
   competitorPricing: agentScheduleSchema.optional(), // Competitor pricing analysis
-  competitorReviews: agentScheduleSchema.optional(), // Competitor review analysis
+  competitorReviews: agentScheduleSchema.optional(), // Competitor review mining (entity-scoped, ADR 004 §9)
   competitorIntegrations: agentScheduleSchema.optional(), // Competitor integrations analysis
   reviewPlatforms: agentScheduleSchema.optional(), // Review platform discovery agent
   newsPublications: agentScheduleSchema.optional(), // News publications discovery agent
   competitorDiscovery: agentScheduleSchema.optional(), // Competitor discovery agent
   competitorSummary: agentScheduleSchema.optional(), // Competitor summary agent
+  segmentQuotes: agentScheduleSchema.optional(), // Customer quotes gathering agent (ADR 004 §9)
+  segmentInsights: agentScheduleSchema.optional(), // Persona/JTBD synthesis agent (ADR 004 §9)
   customerSegments: agentScheduleSchema.optional(), // Customer segments agent
   featureAnalytics: agentScheduleSchema.optional(), // Feature analytics agent
   marketReview: agentScheduleSchema.optional(), // Market review agent (monthly/quarterly)
@@ -1497,6 +1505,10 @@ export const customerSegmentProfiles = pgTable("customer_segment_profiles", {
   productId: varchar("product_id").notNull(),
   organizationId: varchar("organization_id").notNull(),
   segmentEntityId: varchar("segment_entity_id").notNull(), // -> segment_entities.id
+  // Proposal gate (ADR 004 §7): agent-created facets are proposed → accept;
+  // owner-created facets are tracked immediately with `owner` provenance.
+  status: text("status").notNull().default("tracked"), // proposed | tracked
+  provenance: text("provenance").notNull().default("owner"), // owner | agent
 
   // Needs Assessment
   needsSummary: text("needs_summary"),
@@ -1570,6 +1582,7 @@ export const personas = pgTable("personas", {
   description: text("description"),
   demographics: jsonb("demographics"), // {role, industry, companySize, experience}
   behaviours: jsonb("behaviours"), // Array of strings
+  provenance: text("provenance").notNull().default("owner"), // owner | agent (ADR 004 §7)
   sortOrder: integer("sort_order").default(0),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -1588,8 +1601,13 @@ export const personaFacets = pgTable("persona_facets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   personaId: varchar("persona_id").notNull(), // -> personas.id
   productId: varchar("product_id").notNull(),
-  goals: jsonb("goals"), // Array of strings
-  painPoints: jsonb("pain_points"), // Array of strings
+  // Proposal gate per facet (ADR 004 §7 / ADR 003 §2.3 "propose per facet"):
+  // agent-proposed facets await accept; owner-created are tracked.
+  status: text("status").notNull().default("tracked"), // proposed | tracked
+  provenance: text("provenance").notNull().default("owner"), // owner | agent
+  // Claim arrays carry embedded evidenceRefs (ADR 004 §3.3 — Zod contract, no DDL)
+  goals: jsonb("goals"), // Array of { text, evidenceRefs }
+  painPoints: jsonb("pain_points"), // Array of { text, evidenceRefs }
   jobsToBeDone: jsonb("jobs_to_be_done"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

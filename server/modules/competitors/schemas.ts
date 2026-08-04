@@ -57,6 +57,31 @@ export const competitorUpdatesResultSchema = z.object({
   searchSummary: z.string().default(""),
 });
 
+/** Output of the competitor-reviews-agent (gemini.ts:11501–11515 result type). */
+export const competitorReviewQuoteSchema = z.object({
+  text: z.string().min(1),
+  source: z.string().nullish().transform(v => v ?? "Web"),
+  sourceUrl: z.string().nullish().transform(v => v ?? ""),
+  rating: z.number().nullish(),
+  date: z.string().nullish(),
+});
+export type CompetitorReviewQuote = z.infer<typeof competitorReviewQuoteSchema>;
+
+export const competitorReviewsResultSchema = z.object({
+  averageRating: z.number().nullish(),
+  totalReviews: z.number().nullish(),
+  platforms: z.array(z.object({
+    name: z.string().min(1),
+    url: z.string().nullish().transform(v => v ?? ""),
+    rating: z.number().nullish(),
+    reviewCount: z.number().nullish(),
+  })).default([]),
+  positiveThemes: z.array(z.string()).default([]),
+  negativeThemes: z.array(z.string()).default([]),
+  quotes: z.array(competitorReviewQuoteSchema).default([]),
+});
+export type CompetitorReviewsResult = z.infer<typeof competitorReviewsResultSchema> & { lastUpdated: string };
+
 // ── API request bodies ───────────────────────────────────────────────────────
 
 export const classificationSchema = z.enum(["DIRECT", "ADJACENT"]);

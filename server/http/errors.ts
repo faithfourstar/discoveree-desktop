@@ -50,6 +50,20 @@ export class ConflictWithPayloadError extends ConflictError {
   }
 }
 
+/**
+ * 422 with payload — the evidence gate's answer to a below-threshold manual
+ * trigger (ADR 004 §3.3: `{ error: "insufficient_evidence", evidenceStatus }`).
+ */
+export class UnprocessableError extends DomainError {
+  constructor(
+    message = "Unprocessable",
+    public readonly payload: Record<string, unknown> = {},
+  ) {
+    super(message, 422);
+    this.name = "UnprocessableError";
+  }
+}
+
 /** Unknown /api/* → 404 JSON, never the SPA. */
 export function notFoundHandler(_req: Request, res: Response): void {
   res.status(404).json({ error: "Not found" });
@@ -66,6 +80,10 @@ export function errorMiddleware(
     return;
   }
   if (err instanceof ConflictWithPayloadError) {
+    res.status(err.status).json({ error: err.message, ...err.payload });
+    return;
+  }
+  if (err instanceof UnprocessableError) {
     res.status(err.status).json({ error: err.message, ...err.payload });
     return;
   }

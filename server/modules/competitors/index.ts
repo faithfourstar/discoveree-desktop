@@ -11,7 +11,12 @@
  */
 import { AgentSlugs } from "../../lib/agents/slugs.js";
 import { registerEntityScheduledAgent, type EntityAgentTarget } from "../../scheduler/registry.js";
-import { listEntityAgentTargets, runFeaturesScanForEntity, runUpdatesScanForEntity } from "./service.js";
+import {
+  listEntityAgentTargets,
+  runFeaturesScanForEntity,
+  runReviewsScanForEntity,
+  runUpdatesScanForEntity,
+} from "./service.js";
 
 export function registerCompetitorAgents(): void {
   registerEntityScheduledAgent({
@@ -26,6 +31,15 @@ export function registerCompetitorAgents(): void {
     scheduleKey: "competitorFeatures",
     listTargets: () => listEntityAgentTargets("competitorFeatures"),
     run: (target: EntityAgentTarget) => runFeaturesScanForEntity(target.organizationId, target.entityId),
+  });
+
+  // Third registrant of the 3a entity kind (ADR 004 §2/§9): review mining runs
+  // once per org per entity node — the most expensive scan, deduplicated.
+  registerEntityScheduledAgent({
+    slug: AgentSlugs.COMPETITOR_REVIEWS,
+    scheduleKey: "competitorReviews",
+    listTargets: () => listEntityAgentTargets("competitorReviews"),
+    run: (target: EntityAgentTarget) => runReviewsScanForEntity(target.organizationId, target.entityId),
   });
 }
 

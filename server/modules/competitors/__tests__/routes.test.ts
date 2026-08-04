@@ -85,8 +85,10 @@ vi.mock("../../../lib/llm/router.js", () => ({
       }),
     };
   }),
-  // Settings-only export pulled in via the app graph.
+  // Non-callLLM exports pulled in via the app graph (settings + gatherer agents).
   clearLlmClientCaches: vi.fn(),
+  collectAllowedSourceUrls: vi.fn(() => new Set<string>()),
+  enforceSourceUrlAllowList: vi.fn((value: unknown) => ({ value, stripped: [] })),
 }));
 
 vi.mock("../../../lib/web/fetch.js", () => ({

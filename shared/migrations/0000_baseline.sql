@@ -1,7 +1,8 @@
 -- 0000_baseline — Discoveree Desktop squashed baseline (regenerated).
 --
--- Rewrite history (the baseline's free-rewrite window is open until first
--- public release — ADR 003 §5; each rewrite happened with zero installs):
+-- Rewrite history (the baseline's free-rewrite window — ADR 003 §5 — each
+-- rewrite happened with zero installs; per the owner's ADR 004 §8 ruling the
+-- window is now SHUT: everything after rewrite 4 is numbered migrations):
 --
 -- 1. REGENERATED (ADR 002 risk 8 ruling): the three battlecard columns on
 --    competitor_profiles (battlecard_messages, battlecard_ready_flag,
@@ -13,25 +14,34 @@
 --    proposed | tracked) for the review-before-save gate
 --    (competitors-module-spec §2.4).
 --
--- 3. REGENERATED (ADR 003 — multi-product entities; the LAST planned rewrite
---    before the release freeze):
+-- 3. REGENERATED (ADR 003 — multi-product entities):
 --    - competitor_entities added: org-level canonical competitor identity,
 --      facts and monitoring state, researched once per org; two-level
 --      self-referencing tree via parent_entity_id (§2.9; the two-level
 --      invariant is enforced in service code).
 --    - competitor_profiles became the per-product FACET (entity_id +
---      product_id; classification, gate status, threat, comparisons);
---      entity-fact columns moved to competitor_entities.
+--      product_id); entity-fact columns moved to competitor_entities.
 --    - competitor_changes re-keyed to entity_id (dropped product_id and
 --      competitor_name), resolving the ADR 002 §9 name-keyed history edge.
 --    - ai_agent_executions gained nullable entity_id (entity-scoped agent
 --      frequency gates, §2.7).
 --    - Segment/persona tables reshaped ahead of the Customer Insights port
---      (§2.6): segment_entities (org vocabulary), customer_segment_profiles
---      as the facet (segment_entity_id + product_id; identity and legacy
---      single-persona columns dropped), personas (org identity, replaces
---      customer_segment_personas) + persona_facets (per-product goals, pain
---      points, JTBD).
+--      (§2.6): segment_entities, facet-shaped customer_segment_profiles,
+--      personas (replaces customer_segment_personas) + persona_facets.
+--
+-- 4. REGENERATED (ADR 004 §8 — Customer Insights port; the FINAL rewrite,
+--    owner-approved; the window is shut after this):
+--    - feedback_entries: team_id and competitor_name DROPPED (teams are
+--      team-tier; name-keyed competitor identity repeats the drift bug
+--      ADR 003 §2.4 fixed); competitor_entity_id added (+ index);
+--      review_date renamed source_created_at (date discipline ruling:
+--      authored-at-source time; collected_at stays ingestion time).
+--    - feedback_themes: team_id, is_competitor, competitor_name DROPPED
+--      (per-product competitor themes are cut — entity review themes replace
+--      them, ADR 004 §2); aliases, confidence, coherence added (§3.5/§3.6).
+--    - team_assignment_signals table DROPPED entirely.
+--    - customer_segment_profiles gained status + provenance; personas gained
+--      provenance; persona_facets gained status + provenance (§7 gate ruling).
 CREATE TABLE "ai_agent_executions" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"agent_id" varchar NOT NULL,
@@ -239,6 +249,8 @@ CREATE TABLE "customer_segment_profiles" (
 	"product_id" varchar NOT NULL,
 	"organization_id" varchar NOT NULL,
 	"segment_entity_id" varchar NOT NULL,
+	"status" text DEFAULT 'tracked' NOT NULL,
+	"provenance" text DEFAULT 'owner' NOT NULL,
 	"needs_summary" text,
 	"needs" jsonb,
 	"overall_satisfaction" real,
@@ -279,9 +291,8 @@ CREATE TABLE "deleted_customer_segment_names" (
 CREATE TABLE "feedback_entries" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"product_id" varchar NOT NULL,
-	"team_id" varchar,
 	"is_competitor" boolean DEFAULT false NOT NULL,
-	"competitor_name" text,
+	"competitor_entity_id" varchar,
 	"source_name" text NOT NULL,
 	"source_url" text,
 	"source_type" text DEFAULT 'review' NOT NULL,
@@ -291,7 +302,7 @@ CREATE TABLE "feedback_entries" (
 	"quoted_text" text NOT NULL,
 	"sentiment" integer,
 	"reviewer_name" text,
-	"review_date" timestamp,
+	"source_created_at" timestamp,
 	"linked_opportunity_id" varchar,
 	"archived_at" timestamp,
 	"image_url" text,
@@ -314,16 +325,16 @@ CREATE TABLE "feedback_sources" (
 CREATE TABLE "feedback_themes" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"product_id" varchar NOT NULL,
-	"team_id" varchar,
-	"is_competitor" boolean DEFAULT false NOT NULL,
-	"competitor_name" text,
 	"theme_name" text NOT NULL,
+	"aliases" jsonb,
 	"summary" text,
 	"status" text DEFAULT 'needs_review' NOT NULL,
 	"priority" text,
 	"mention_count" integer DEFAULT 0 NOT NULL,
 	"average_sentiment" integer,
 	"feedback_entry_ids" jsonb,
+	"confidence" integer,
+	"coherence" integer,
 	"linked_opportunity_id" varchar,
 	"last_updated_at" timestamp DEFAULT now(),
 	"created_at" timestamp DEFAULT now()
@@ -605,6 +616,7 @@ CREATE TABLE "organizations" (
 	"claude_api_key" text,
 	"openrouter_api_key" text,
 	"llm_key_mode" text DEFAULT 'individual' NOT NULL,
+	"settings" jsonb,
 	"created_at" timestamp DEFAULT now(),
 	"updated_at" timestamp DEFAULT now(),
 	CONSTRAINT "organizations_slug_unique" UNIQUE("slug")
@@ -614,6 +626,8 @@ CREATE TABLE "persona_facets" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"persona_id" varchar NOT NULL,
 	"product_id" varchar NOT NULL,
+	"status" text DEFAULT 'tracked' NOT NULL,
+	"provenance" text DEFAULT 'owner' NOT NULL,
 	"goals" jsonb,
 	"pain_points" jsonb,
 	"jobs_to_be_done" jsonb,
@@ -628,6 +642,7 @@ CREATE TABLE "personas" (
 	"description" text,
 	"demographics" jsonb,
 	"behaviours" jsonb,
+	"provenance" text DEFAULT 'owner' NOT NULL,
 	"sort_order" integer DEFAULT 0,
 	"created_at" timestamp DEFAULT now(),
 	"updated_at" timestamp DEFAULT now()
@@ -855,20 +870,6 @@ CREATE TABLE "skills" (
 	"updated_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE "team_assignment_signals" (
-	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"product_id" varchar NOT NULL,
-	"signal_type" text NOT NULL,
-	"entity_type" text NOT NULL,
-	"entity_id" varchar NOT NULL,
-	"source_team_id" varchar,
-	"target_team_id" varchar NOT NULL,
-	"theme_name" text,
-	"keywords" jsonb,
-	"user_id" varchar NOT NULL,
-	"created_at" timestamp DEFAULT now()
-);
---> statement-breakpoint
 CREATE TABLE "teams" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"product_id" varchar NOT NULL,
@@ -944,9 +945,9 @@ CREATE INDEX "idx_customer_segment_profiles_entity" ON "customer_segment_profile
 CREATE INDEX "idx_deleted_segments_product" ON "deleted_customer_segment_names" USING btree ("product_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "idx_deleted_segments_product_normalized" ON "deleted_customer_segment_names" USING btree ("product_id","normalized_name");--> statement-breakpoint
 CREATE INDEX "idx_feedback_entries_product_id" ON "feedback_entries" USING btree ("product_id");--> statement-breakpoint
-CREATE INDEX "idx_feedback_entries_team_id" ON "feedback_entries" USING btree ("team_id");--> statement-breakpoint
 CREATE INDEX "idx_feedback_entries_product_is_competitor" ON "feedback_entries" USING btree ("product_id","is_competitor");--> statement-breakpoint
 CREATE INDEX "idx_feedback_entries_is_competitor" ON "feedback_entries" USING btree ("is_competitor");--> statement-breakpoint
+CREATE INDEX "idx_feedback_entries_competitor_entity" ON "feedback_entries" USING btree ("competitor_entity_id");--> statement-breakpoint
 CREATE INDEX "idx_feedback_entries_product_collected_at" ON "feedback_entries" USING btree ("product_id","collected_at");--> statement-breakpoint
 CREATE INDEX "idx_feedback_entries_topic" ON "feedback_entries" USING btree ("topic");--> statement-breakpoint
 CREATE INDEX "idx_idea_assessments_user_product" ON "idea_assessments" USING btree ("user_id","product_id");--> statement-breakpoint

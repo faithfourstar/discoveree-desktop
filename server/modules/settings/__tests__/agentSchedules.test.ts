@@ -49,7 +49,9 @@ describe("GET /api/settings/agent-schedules", () => {
     const res = await request(app).get("/api/settings/agent-schedules");
     expect(res.status).toBe(200);
     expect(res.body.pausedAll).toBe(false);
-    expect(res.body.agents).toHaveLength(2);
+    // 3 after ADR 004: the competitors module now registers the entity-kind
+    // competitor-reviews-agent alongside updates + features.
+    expect(res.body.agents).toHaveLength(3);
 
     const updates = res.body.agents.find((a: { slug: string }) => a.slug === AgentSlugs.COMPETITOR_UPDATES);
     expect(updates).toEqual({
@@ -169,7 +171,9 @@ describe("PUT /api/settings/agent-schedules", () => {
     const res = await request(app).put("/api/settings/agent-schedules").send({});
     expect(res.status).toBe(200);
     expect(res.body.pausedAll).toBe(false);
-    expect(res.body.agents).toHaveLength(2);
+    // 3 after ADR 004: the competitors module now registers the entity-kind
+    // competitor-reviews-agent alongside updates + features.
+    expect(res.body.agents).toHaveLength(3);
   });
 });
 

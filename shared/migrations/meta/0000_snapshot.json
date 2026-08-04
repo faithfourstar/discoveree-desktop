@@ -1,5 +1,5 @@
 {
-  "id": "03a9d27d-df9b-4468-ba43-a08b8f69d613",
+  "id": "82e94155-596e-4eb7-9c58-370f45524db3",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1422,6 +1422,20 @@
           "primaryKey": false,
           "notNull": true
         },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'tracked'"
+        },
+        "provenance": {
+          "name": "provenance",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'owner'"
+        },
         "needs_summary": {
           "name": "needs_summary",
           "type": "text",
@@ -1732,12 +1746,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "team_id": {
-          "name": "team_id",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": false
-        },
         "is_competitor": {
           "name": "is_competitor",
           "type": "boolean",
@@ -1745,9 +1753,9 @@
           "notNull": true,
           "default": false
         },
-        "competitor_name": {
-          "name": "competitor_name",
-          "type": "text",
+        "competitor_entity_id": {
+          "name": "competitor_entity_id",
+          "type": "varchar",
           "primaryKey": false,
           "notNull": false
         },
@@ -1808,8 +1816,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "review_date": {
-          "name": "review_date",
+        "source_created_at": {
+          "name": "source_created_at",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false
@@ -1856,21 +1864,6 @@
           "method": "btree",
           "with": {}
         },
-        "idx_feedback_entries_team_id": {
-          "name": "idx_feedback_entries_team_id",
-          "columns": [
-            {
-              "expression": "team_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_feedback_entries_product_is_competitor": {
           "name": "idx_feedback_entries_product_is_competitor",
           "columns": [
@@ -1897,6 +1890,21 @@
           "columns": [
             {
               "expression": "is_competitor",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_feedback_entries_competitor_entity": {
+          "name": "idx_feedback_entries_competitor_entity",
+          "columns": [
+            {
+              "expression": "competitor_entity_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2045,30 +2053,17 @@
           "primaryKey": false,
           "notNull": true
         },
-        "team_id": {
-          "name": "team_id",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "is_competitor": {
-          "name": "is_competitor",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "competitor_name": {
-          "name": "competitor_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "theme_name": {
           "name": "theme_name",
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "aliases": {
+          "name": "aliases",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "summary": {
           "name": "summary",
@@ -2105,6 +2100,18 @@
         "feedback_entry_ids": {
           "name": "feedback_entry_ids",
           "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confidence": {
+          "name": "confidence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "coherence": {
+          "name": "coherence",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         },
@@ -3916,6 +3923,12 @@
           "notNull": true,
           "default": "'individual'"
         },
+        "settings": {
+          "name": "settings",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -3969,6 +3982,20 @@
           "type": "varchar",
           "primaryKey": false,
           "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'tracked'"
+        },
+        "provenance": {
+          "name": "provenance",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'owner'"
         },
         "goals": {
           "name": "goals",
@@ -4088,6 +4115,13 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
+        },
+        "provenance": {
+          "name": "provenance",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'owner'"
         },
         "sort_order": {
           "name": "sort_order",
@@ -5623,87 +5657,6 @@
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.team_assignment_signals": {
-      "name": "team_assignment_signals",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "varchar",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "product_id": {
-          "name": "product_id",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "signal_type": {
-          "name": "signal_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "entity_type": {
-          "name": "entity_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "entity_id": {
-          "name": "entity_id",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source_team_id": {
-          "name": "source_team_id",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "target_team_id": {
-          "name": "target_team_id",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "theme_name": {
-          "name": "theme_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "keywords": {
-          "name": "keywords",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "varchar",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false,

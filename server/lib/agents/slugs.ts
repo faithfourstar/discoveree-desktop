@@ -11,6 +11,13 @@ export const AgentSlugs = {
   // Used by lib/search/providers.ts (searchProviders port, whole per brief §3)
   PLATFORM_SEARCH: "platform-search-agent",
   NEWS_SEARCH: "news-search-agent",
+  // Customer Insights & Feedback (ADR 004 §9)
+  GATHER_FEEDBACK: "gather-feedback-agent",
+  SENTIMENT_ANALYSIS: "sentiment-analysis-agent",
+  THEME_AGGREGATION: "theme-aggregation-agent",
+  CUSTOMER_QUOTES: "customer-quotes-agent",
+  CUSTOMER_INSIGHTS: "customer-insights-agent",
+  COMPETITOR_REVIEWS: "competitor-reviews-agent",
 } as const;
 
 export type AgentSlug = (typeof AgentSlugs)[keyof typeof AgentSlugs];

@@ -81,8 +81,9 @@ export function toCompetitorCard(
     enrichmentStatus: (profile.enrichmentStatus ?? "pending") as CompetitorCard["enrichmentStatus"],
     // ISO only — the client renders "verified 2h ago"; never format dates server-side.
     lastVerifiedAt: profile.lastEnrichedAt ? new Date(profile.lastEnrichedAt).toISOString() : null,
-    // Null until the reviews sprint — the client block stays unrendered (§6).
-    sentiment: null,
+    // ADR 004 §6.4 (this IS the reviews sprint ADR 002 §6 reserved these for):
+    // sentiment derives deterministically from the entity's average rating.
+    sentiment: facts.reviewAverageRating != null ? Math.round(facts.reviewAverageRating * 20) : null,
     reviewCount: facts.reviewTotalCount ?? null,
     entity: {
       id: entity.id,
@@ -282,6 +283,26 @@ export function registerCompetitorRoutes(app: Express): void {
 
     const changes = await storage.getCompetitorChangesByEntity(entity.id, 20);
 
+    // "What buyers say" block (ADR 004 §6.4) — from the entity review columns
+    // with child→root fallback. Unverifiable quotes are flagged, never hidden.
+    const reviews = {
+      averageRating: facts.reviewAverageRating ?? null,
+      totalCount: facts.reviewTotalCount ?? null,
+      platforms: (facts.reviewPlatforms as Array<{ name: string; url: string; rating?: number | null; reviewCount?: number | null }> | null) ?? [],
+      positiveThemes: (facts.reviewPositiveThemes as string[] | null) ?? [],
+      negativeThemes: (facts.reviewNegativeThemes as string[] | null) ?? [],
+      quotes: ((facts.reviews as Array<{ text?: string; source?: string; sourceUrl?: string; sentiment?: number | null; date?: string | null; verified?: boolean }> | null) ?? [])
+        .filter(q => q.text)
+        .map(q => ({
+          text: q.text!,
+          source: q.source ?? "Web",
+          sourceUrl: q.sourceUrl ?? "",
+          sentiment: q.sentiment ?? null,
+          date: q.date ?? null,
+          verified: q.verified ?? false,
+        })),
+    };
+
     res.json({
       competitor: {
         ...toCompetitorCard(joined, alsoTracked.get(entity.id) ?? []),
@@ -289,6 +310,7 @@ export function registerCompetitorRoutes(app: Express): void {
         keyFeatures,
         markets,
         summarySourceUrl,
+        reviews,
       },
       changes: changes.map(toChange),
       // DeepDiveThread — strategy sprint; shape reserved per mock/types.ts

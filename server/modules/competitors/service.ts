@@ -56,42 +56,10 @@ export function extractDomain(url: string | null | undefined): string | null {
   }
 }
 
-// ── Inline near-dup helpers ─────────────────────────────────────────────────
-// TODO(sprint-3b): re-home into lib when segmentNormalization.ts ports for
-// Customers (ADR 002 §5).
-
-/**
- * True when two free-text bullet points (e.g. key differentiators) make the same
- * point in different words. Compares token overlap after stripping citation
- * markers ([1][5]) and punctuation; 70%+ overlap of the smaller set counts as a
- * duplicate.
- */
-export function isNearDuplicateText(a: string, b: string): boolean {
-  const tokens = (t: string) => new Set(
-    t.toLowerCase()
-      .replace(/\[\d+\]/g, " ")
-      .replace(/[^a-z0-9\s]/g, " ")
-      .split(/\s+/)
-      .filter(w => w.length > 2),
-  );
-  const ta = tokens(a), tb = tokens(b);
-  if (ta.size === 0 || tb.size === 0) return a.toLowerCase().trim() === b.toLowerCase().trim();
-  let shared = 0;
-  ta.forEach(w => { if (tb.has(w)) shared++; });
-  return shared / Math.min(ta.size, tb.size) >= 0.7;
-}
-
-/**
- * Merge new differentiator bullets into an existing list, dropping near-duplicate
- * paraphrases. Also self-heals: duplicates already present in `existing` collapse.
- */
-export function mergeDifferentiators(existing: string[], incoming: string[]): string[] {
-  const merged: string[] = [];
-  for (const d of [...existing, ...incoming]) {
-    if (d && !merged.some(kept => isNearDuplicateText(kept, d))) merged.push(d);
-  }
-  return merged;
-}
+// ── Near-dup helpers — re-homed to lib/text.ts (ADR 004 §4; the ADR 002 §5
+// TODO fell due this sprint). Re-exported for existing consumers.
+import { isNearDuplicateText, mergeDifferentiators } from "../../lib/text.js";
+export { isNearDuplicateText, mergeDifferentiators };
 
 // ── Child→root fact fallback (ADR 003 §2.9.2) ───────────────────────────────
 
@@ -795,6 +763,137 @@ export async function runFeaturesScanForEntity(
     return { processed: true };
   }
   return { processed: false };
+}
+
+// ── Competitor review mining (entity-scoped, ADR 004 §2) ────────────────────
+
+/**
+ * Run review mining for ONE entity node and conditional-merge the result onto
+ * the entity review columns (scheduler.ts:2849–2985 logic, re-keyed to the
+ * entity; the feedback-bridge tail is deleted — competitor voice lives on the
+ * competitor object). Only fields the run actually returned overwrite; the
+ * §10a baseline rule applies via the entity merge helper.
+ */
+export async function runReviewsScanForEntity(
+  organizationId: string,
+  entityId: string,
+): Promise<{ processed: boolean }> {
+  const { getCompetitorReviews } = await import("./agents/reviews.js");
+  const { getFeedbackSourcesByProduct } = await import("../customers/storage.js");
+
+  const entity = await storage.getCompetitorEntityById(entityId);
+  if (!entity) return { processed: false };
+
+  // Trusted sources: union across the products holding tracked facets.
+  const facets = (await storage.getCompetitorProfilesByEntity(entity.id))
+    .filter(f => f.status === "tracked" && f.sourceCategory !== "own_product");
+  const sourceMap = new Map<string, { name: string; url: string }>();
+  for (const facet of facets) {
+    for (const source of await getFeedbackSourcesByProduct(facet.productId)) {
+      if (source.type === "review" || source.type === "comparison") {
+        sourceMap.set(source.url, { name: source.name, url: source.url });
+      }
+    }
+  }
+  const trustedFeedbackSources = [...sourceMap.values()];
+
+  const result = await getCompetitorReviews(
+    entity.name,
+    organizationId,
+    trustedFeedbackSources.length > 0 ? trustedFeedbackSources : undefined,
+  );
+  if (!result) return { processed: false };
+
+  // Conditional merge — only include fields with actual non-empty data so an
+  // incomplete run never wipes cached review data (SaaS semantics preserved).
+  const reviewUpdate: Record<string, unknown> = {};
+  if (result.quotes.length > 0) {
+    reviewUpdate["reviews"] = result.quotes.map(q => ({
+      text: q.text,
+      source: q.source,
+      sourceUrl: q.sourceUrl,
+      sentiment: q.rating ? Math.round(q.rating * 20) : null,
+      date: q.date ?? null,
+      verified: !!q.sourceUrl,
+      sourceType: "web_search",
+      fetchedAt: result.lastUpdated,
+    }));
+  }
+  if (result.platforms.length > 0) reviewUpdate["reviewPlatforms"] = result.platforms;
+  if (result.positiveThemes.length > 0) reviewUpdate["reviewPositiveThemes"] = result.positiveThemes;
+  if (result.negativeThemes.length > 0) reviewUpdate["reviewNegativeThemes"] = result.negativeThemes;
+  if (result.averageRating !== undefined && result.averageRating !== null) reviewUpdate["reviewAverageRating"] = result.averageRating;
+  if (result.totalReviews !== undefined && result.totalReviews !== null) reviewUpdate["reviewTotalCount"] = result.totalReviews;
+
+  if (Object.keys(reviewUpdate).length > 0) {
+    await storage.mergeCompetitorEntityFacts(entity.id, reviewUpdate);
+  }
+  return { processed: true };
+}
+
+/**
+ * Append mined quotes to a tracked entity's `reviews` (ADR 004 §2
+ * cross-allocation — the allowed cross-module write path). Dedup by the
+ * ported 100-char lowercase prefix key.
+ */
+export async function appendEntityReviews(
+  entityId: string,
+  quotes: Array<{ text: string; source: string; sourceUrl: string; sentiment: number | null; verified: boolean; sourceCreatedAt?: string | null }>,
+): Promise<number> {
+  const entity = await storage.getCompetitorEntityById(entityId);
+  if (!entity) return 0;
+  const existing = (entity.reviews as Array<{ text?: string }> | null) ?? [];
+  const keys = new Set(existing.map(r => (r.text || "").toLowerCase().trim().substring(0, 100)));
+  const appended = [...existing];
+  let added = 0;
+  const now = new Date().toISOString();
+  for (const quote of quotes) {
+    if (!quote.text || quote.text.trim().length < 10) continue;
+    const key = quote.text.toLowerCase().trim().substring(0, 100);
+    if (keys.has(key)) continue;
+    keys.add(key);
+    appended.push({
+      text: quote.text,
+      source: quote.source,
+      sourceUrl: quote.sourceUrl,
+      sentiment: quote.sentiment,
+      verified: quote.verified,
+      sourceType: "web_search",
+      fetchedAt: now,
+      date: quote.sourceCreatedAt ?? null,
+    } as { text?: string });
+    added++;
+  }
+  if (added > 0) {
+    await storage.mergeCompetitorEntityFacts(entityId, { reviews: appended });
+  }
+  return added;
+}
+
+/**
+ * Resolve a mined competitor mention to a TRACKED entity for this product
+ * (ADR 004 §2): match against competitor_entities by normalised name; no
+ * tracked facet for the product → null (caller drops and logs — an untracked
+ * competitor must not accumulate context).
+ */
+export async function resolveTrackedCompetitorForProduct(
+  organizationId: string,
+  productId: string,
+  name: string,
+): Promise<{ entityId: string; entityName: string } | null> {
+  const entity = await storage.findCompetitorEntityByNormalizedName(organizationId, normalizeCompetitorName(name));
+  if (!entity) return null;
+  const facet = await storage.getCompetitorProfileByProductAndEntity(productId, entity.id);
+  if (!facet || facet.status !== "tracked" || facet.sourceCategory === "own_product") return null;
+  return { entityId: entity.id, entityName: entity.name };
+}
+
+/** Tracked competitor names for a product (cross-allocation known-name list). */
+export async function listTrackedCompetitorNames(productId: string): Promise<string[]> {
+  const joined = await storage.getFacetsWithEntitiesByProduct(productId);
+  return joined
+    .filter(j => j.profile.status === "tracked" && j.profile.sourceCategory !== "own_product")
+    .map(j => j.entity.name);
 }
 
 // ── Entity agent target resolution (scheduler wiring, ADR 003 §2.7) ─────────

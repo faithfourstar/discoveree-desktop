@@ -22,6 +22,7 @@ import { closeDatabase, initDatabase } from "./db/index.js";
 import { configureSecrets } from "./lib/secrets.js";
 import { seedAgents } from "./lib/agents/seed.js";
 import { registerCompetitorAgents } from "./modules/competitors/index.js";
+import { registerCustomerAgents } from "./modules/customers/index.js";
 import { buildApp } from "./app.js";
 import { startScheduler, stopScheduler } from "./scheduler/index.js";
 import { cancelCatchUpPass, scheduleCatchUpPass } from "./scheduler/catchUp.js";
@@ -73,6 +74,7 @@ async function main(): Promise<void> {
     await initDatabase({ target: "pglite", dataDir });
     await seedAgents();
     registerCompetitorAgents();
+    registerCustomerAgents();
 
     const app = buildApp();
     server = app.listen(PORT, HOST, () => {

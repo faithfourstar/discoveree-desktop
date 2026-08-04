@@ -63,6 +63,32 @@ const AGENT_PRESENTATION: Record<string, { label: string; description: string; m
     description: "Re-reads each competitor's documented features so comparisons stay current.",
     moduleGate: "competitive-intelligence",
   },
+  // Sprint 3b (ADR 004 §9) registrants
+  [AgentSlugs.COMPETITOR_REVIEWS]: {
+    label: "Competitor review mining",
+    description: "Gathers each competitor's customer reviews, ratings and buyer themes — once per competitor, shared across products.",
+    moduleGate: "competitive-intelligence",
+  },
+  [AgentSlugs.GATHER_FEEDBACK]: {
+    label: "Feedback collection",
+    description: "Mines trusted review platforms for your product's customer feedback with verified sources.",
+    moduleGate: "customer-insights",
+  },
+  [AgentSlugs.THEME_AGGREGATION]: {
+    label: "Theme maintenance",
+    description: "Files new feedback into your stable theme set and proposes genuinely new themes from the residue.",
+    moduleGate: "customer-insights",
+  },
+  [AgentSlugs.CUSTOMER_QUOTES]: {
+    label: "Customer voice gathering",
+    description: "Finds authentic, source-linked customer quotes for each tracked segment.",
+    moduleGate: "customer-insights",
+  },
+  [AgentSlugs.CUSTOMER_INSIGHTS]: {
+    label: "Segment synthesis",
+    description: "Builds personas and jobs-to-be-done strictly from gathered evidence — runs only when a segment has enough.",
+    moduleGate: "customer-insights",
+  },
 };
 
 function humaniseSlug(slug: string): string {

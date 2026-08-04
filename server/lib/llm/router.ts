@@ -23,6 +23,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { getAiAgentBySlug } from "../agents/registry.js";
 import { createAiAgentExecution, updateAiAgentExecution } from "../agents/executions.js";
+import { isGroundingRedirectUrl } from "../web/urls.js";
+import { sanitizeJsonResponse } from "./json.js";
 import { trackLlmUsage } from "./usage.js";
 import { getGeminiClient, getGeminiKeySource } from "./providers/gemini.js";
 import { getClaudeClient, DEFAULT_CLAUDE_MODEL } from "./providers/claude.js";
@@ -98,6 +100,150 @@ export function toStrictOpenAISchema(schema: any): any | null {
   } catch {
     return null;
   }
+}
+
+// ============================================================================
+// GROUNDED CITATIONS — extraction + allow-list enforcement (evidence gate).
+//
+// The Gemini web-search+schema path previously read the grounded response for
+// TEXT only: phase 2 "extracted" sourceUrl fields from phase-1 prose, so
+// citations were model-reconstructed, not real (owner-reported, 4 Aug 2026).
+// These helpers make Gemini citations real: pull the grounding chunks out of
+// the response, feed them to phase 2 as an explicit allow-list, and STRIP any
+// URL-shaped output field that is not on it. Exported so agent-level evidence
+// gates (ADR 004) can reuse the enforcement.
+// ============================================================================
+
+/**
+ * Extract real web URLs from a Gemini response's grounding metadata
+ * (candidates[0].groundingMetadata.groundingChunks[].web.uri, per the
+ * @google/genai GroundingChunkWeb type). Google's vertexaisearch redirect
+ * URLs are DROPPED, matching the house rule everywhere else (lib/web/urls.ts
+ * isGroundingRedirectUrl: "must never be stored as official/source URLs";
+ * agents reject them, nothing in the codebase resolves them).
+ */
+export function extractGeminiGroundingCitations(response: unknown): string[] {
+  const chunks = (response as any)?.candidates?.[0]?.groundingMetadata?.groundingChunks;
+  if (!Array.isArray(chunks)) return [];
+  const urls: string[] = [];
+  let redirectCount = 0;
+  for (const chunk of chunks) {
+    const uri = chunk?.web?.uri;
+    if (typeof uri !== "string" || !/^https?:\/\//i.test(uri.trim())) continue;
+    const cleaned = uri.trim();
+    if (isGroundingRedirectUrl(cleaned)) {
+      redirectCount++;
+      continue;
+    }
+    if (!urls.includes(cleaned)) urls.push(cleaned);
+  }
+  if (redirectCount > 0) {
+    console.log(`[LLMRouter] Grounding: dropped ${redirectCount} vertexaisearch redirect URL(s) — redirects are never stored as sources`);
+  }
+  return urls;
+}
+
+const URL_IN_TEXT_REGEX = /https?:\/\/[^\s"'<>()\[\]{}]+/g;
+
+/** Comparison key for allow-list membership: trimmed, trailing punctuation/slash removed, lower-cased. */
+function normaliseUrlForAllowList(url: string): string {
+  return url.trim().replace(/[.,;:!?]+$/, "").replace(/\/+$/, "").toLowerCase();
+}
+
+/**
+ * Build the citation allow-list for an extraction pass: the grounded
+ * citations plus every URL verbatim-present in the research text.
+ */
+export function collectAllowedSourceUrls(
+  citations: string[] | undefined,
+  researchText: string | undefined,
+): Set<string> {
+  const allowed = new Set<string>();
+  for (const c of citations ?? []) {
+    if (!isGroundingRedirectUrl(c)) allowed.add(normaliseUrlForAllowList(c));
+  }
+  for (const match of (researchText ?? "").match(URL_IN_TEXT_REGEX) ?? []) {
+    if (!isGroundingRedirectUrl(match)) allowed.add(normaliseUrlForAllowList(match));
+  }
+  return allowed;
+}
+
+/**
+ * Enforcement, not hope: deep-walk a parsed JSON value and strip every
+ * URL-shaped STRING FIELD whose URL is not in the allow-list — object fields
+ * become null, array elements are removed (a null hole would fail the
+ * agents' Zod array-of-string schemas). Prose strings that merely CONTAIN a
+ * URL are left alone — only fields that ARE a URL are subject to the gate.
+ * Grounding redirect URLs are always stripped, allow-listed or not.
+ * Exported for reuse by agent-level evidence gates (ADR 004).
+ */
+export function enforceSourceUrlAllowList<T>(
+  value: T,
+  allowed: ReadonlySet<string> | string[],
+): { value: T; stripped: string[] } {
+  const allowedSet = allowed instanceof Set
+    ? allowed
+    : new Set([...allowed].map(normaliseUrlForAllowList));
+  const stripped: string[] = [];
+
+  const isUrlField = (s: string): boolean => /^https?:\/\/\S+$/i.test(s.trim());
+  const isAllowed = (s: string): boolean =>
+    !isGroundingRedirectUrl(s.trim()) && allowedSet.has(normaliseUrlForAllowList(s));
+
+  const walk = (node: any): any => {
+    if (typeof node === "string") {
+      if (isUrlField(node) && !isAllowed(node)) {
+        stripped.push(node.trim());
+        return null;
+      }
+      return node;
+    }
+    if (Array.isArray(node)) {
+      return node
+        .map(item => {
+          if (typeof item === "string" && isUrlField(item) && !isAllowed(item)) {
+            stripped.push(item.trim());
+            return STRIP_SENTINEL;
+          }
+          return walk(item);
+        })
+        .filter(item => item !== STRIP_SENTINEL);
+    }
+    if (node && typeof node === "object") {
+      const out: any = {};
+      for (const [k, v] of Object.entries(node)) out[k] = walk(v);
+      return out;
+    }
+    return node;
+  };
+
+  return { value: walk(value) as T, stripped };
+}
+
+const STRIP_SENTINEL = Symbol("stripped-url");
+
+/**
+ * Whether this Gemini model supports googleSearch grounding AND structured
+ * output (responseSchema) in ONE call. Checked 4 Aug 2026 against
+ * ai.google.dev/gemini-api/docs/structured-output: "Gemini 3 lets you combine
+ * Structured Outputs with built-in tools, including Grounding with Google
+ * Search". Gemini 2.5 and earlier still REJECT the combination ("controlled
+ * generation is not supported with google_search tool" — see
+ * googleapis/python-genai#665), so those models use the hardened two-phase
+ * path directly.
+ */
+export function supportsGroundedStructuredOutput(model: string): boolean {
+  const match = model.match(/^gemini-(\d+(?:\.\d+)?)/);
+  if (!match) return false;
+  return parseFloat(match[1]!) >= 3;
+}
+
+/** Shared phase-2 instruction: cite only from the allow-list, never construct URLs. */
+function buildSourcesBlock(citations: string[]): string {
+  if (citations.length === 0) {
+    return "\n\nCITATION RULE: any sourceUrl/websiteUrl/citation field may ONLY contain a URL that appears verbatim in the research text below. If no such URL supports a field, use null. NEVER construct, guess, or complete URLs.";
+  }
+  return `\n\nSOURCES — the only URLs you may cite:\n${citations.map((u, i) => `${i + 1}. ${u}`).join("\n")}\nAny sourceUrl/websiteUrl/citation field MUST be copied verbatim from this list (or from a URL appearing verbatim in the research text). If no listed source supports a field, use null. NEVER construct, guess, or complete URLs.`;
 }
 
 // ============================================================================
@@ -197,8 +343,10 @@ export interface LLMResponse {
   model: string;
   provider: LLMProvider;
   toolCalls?: OpenAI.Chat.ChatCompletionMessageToolCall[];
-  // Numbered source URLs for [n] citation markers in the text (Perplexity returns
-  // these; [1] refers to citations[0]). Undefined for providers without citations.
+  // Real source URLs. Perplexity: numbered [n] citation markers in the text
+  // ([1] refers to citations[0]). Gemini web-search calls: the grounding
+  // chunks' web URLs (redirects dropped) in chunk order. Undefined for
+  // providers/calls without citations.
   citations?: string[];
 }
 
@@ -387,16 +535,83 @@ async function callGemini(
   const promptLength = typeof contents === "string" ? contents.length : (messages || []).reduce((acc, m) => acc + m.content.length, 0);
   const estimatedTokens = Math.ceil(promptLength / 4);
 
-  // Two-phase approach: Gemini can't use Google Grounding AND JSON schema simultaneously.
-  // Phase 1 — run with web search to get grounded research text (no schema).
-  // Phase 2 — re-run without web search + schema to extract structured JSON from Phase 1 output.
+  // Web search + structured JSON on Gemini:
+  //
+  // Preferred (Gemini 3+ only — see supportsGroundedStructuredOutput): ONE
+  // call doing googleSearch grounding AND responseSchema, mirroring the
+  // OpenAI single-call pattern; any error (or unverifiable grounding) falls
+  // back to the hardened two-phase path. Correctness never depends on
+  // single-call succeeding.
+  //
+  // Two-phase (Gemini ≤2.5, and the fallback): Phase 1 runs with web search
+  // to get grounded research text; its groundingMetadata is extracted into a
+  // REAL citation list. Phase 2 extracts structured JSON with that list as an
+  // explicit citation allow-list, and the output is enforced against it —
+  // URL fields the model reconstructed rather than grounded are stripped to
+  // null (evidence gate, ADR 004).
   if (useWebSearch && responseSchema) {
+    if (supportsGroundedStructuredOutput(model)) {
+      try {
+        logLLMDebug("gemini", correlationId, "SINGLE_CALL_GROUNDED_SCHEMA_START", { model });
+        const client = await getGeminiClient(organizationId);
+        const singleConfig: any = {
+          temperature: temperature ?? 0.7,
+          safetySettings: GEMINI_SAFETY_SETTINGS,
+          tools: [{ googleSearch: {} }],
+          responseMimeType: "application/json",
+          responseSchema: toJsonSchema(responseSchema),
+        };
+        if (messages && messages.length > 0 && systemPrompt) {
+          singleConfig.systemInstruction = systemPrompt;
+        }
+        const singleResponse: any = await client.models.generateContent({ model, contents, config: singleConfig });
+        const singleText: string = singleResponse.text || "";
+        if (!singleText.trim()) {
+          throw new Error("Grounded single call returned no text");
+        }
+        const singleCitations = extractGeminiGroundingCitations(singleResponse);
+        if (singleCitations.length === 0) {
+          // No verifiable grounding → the evidence gate cannot hold; use the
+          // hardened two-phase path instead of returning unverifiable URLs.
+          throw new Error("Grounded single call returned no verifiable grounding citations");
+        }
+        let enforcedText = singleText;
+        try {
+          const parsed = JSON.parse(sanitizeJsonResponse(singleText) || "");
+          const { value, stripped } = enforceSourceUrlAllowList(parsed, collectAllowedSourceUrls(singleCitations, undefined));
+          if (stripped.length > 0) {
+            logLLMDebug("gemini", correlationId, "CITATION_ALLOWLIST_STRIPPED", {
+              phase: "single-call",
+              strippedCount: stripped.length,
+              stripped: stripped.slice(0, 5),
+            });
+          }
+          enforcedText = JSON.stringify(value);
+        } catch {
+          // Not parseable JSON — leave for the caller's own Zod validation.
+        }
+        const singleUsage = singleResponse.usageMetadata || {};
+        return {
+          text: enforcedText,
+          promptTokens: singleUsage.promptTokenCount || 0,
+          completionTokens: (singleUsage.candidatesTokenCount || 0) + (singleUsage.thoughtsTokenCount || 0),
+          model,
+          provider: "gemini",
+          citations: singleCitations,
+        };
+      } catch (singleErr) {
+        const msg = singleErr instanceof Error ? singleErr.message : String(singleErr);
+        logLLMDebug("gemini", correlationId, "SINGLE_CALL_GROUNDED_SCHEMA_FALLBACK", { model, error: msg.slice(0, 200) });
+      }
+    }
+
     logLLMDebug("gemini", correlationId, "TWO_PHASE_START", {
-      reason: "Gemini web search and responseSchema are mutually exclusive — using two-phase approach",
+      reason: "Gemini web search and responseSchema are mutually exclusive on this model — using hardened two-phase approach",
       model,
     });
 
-    // Phase 1: grounded research (web search, no schema)
+    // Phase 1: grounded research (web search, no schema). The recursive call
+    // extracts groundingMetadata into phase1Result.citations.
     const phase1Result = await callGemini(
       organizationId, model, prompt, systemPrompt,
       true, undefined, temperature, messages, visionImages,
@@ -409,8 +624,17 @@ async function callGemini(
       return phase1Result;
     }
 
-    // Phase 2: schema extraction (no web search, with schema)
-    const extractionPrompt = `You are a data extraction assistant. Below is research gathered from the web. Extract and structure the information into the required JSON format. Return only valid JSON — no markdown, no explanation.
+    const groundedCitations = phase1Result.citations ?? [];
+    if (groundedCitations.length === 0) {
+      logLLMDebug("gemini", correlationId, "TWO_PHASE_NO_GROUNDING_CITATIONS", {
+        model,
+        note: "phase 1 returned no grounding chunks — only URLs verbatim in the research text may survive enforcement",
+      });
+    }
+
+    // Phase 2: schema extraction (no web search, with schema) with the real
+    // grounded sources as an explicit citation allow-list.
+    const extractionPrompt = `You are a data extraction assistant. Below is research gathered from the web. Extract and structure the information into the required JSON format. Return only valid JSON — no markdown, no explanation.${buildSourcesBlock(groundedCitations)}
 
 RESEARCH:
 ${phase1Text}`;
@@ -420,12 +644,34 @@ ${phase1Text}`;
       false, responseSchema, 0.2, undefined, undefined,
     );
 
+    // Enforcement, not hope: strip every URL-shaped field the model produced
+    // that is neither a grounded citation nor verbatim-present in phase 1.
+    let enforcedText = phase2Result.text;
+    try {
+      const parsed = JSON.parse(sanitizeJsonResponse(phase2Result.text) || "");
+      const { value, stripped } = enforceSourceUrlAllowList(
+        parsed,
+        collectAllowedSourceUrls(groundedCitations, phase1Text),
+      );
+      if (stripped.length > 0) {
+        logLLMDebug("gemini", correlationId, "CITATION_ALLOWLIST_STRIPPED", {
+          phase: "two-phase",
+          strippedCount: stripped.length,
+          stripped: stripped.slice(0, 5),
+        });
+      }
+      enforcedText = JSON.stringify(value);
+    } catch {
+      // Not parseable JSON — leave for the caller's own Zod validation.
+    }
+
     return {
-      text: phase2Result.text,
+      text: enforcedText,
       promptTokens: (phase1Result.promptTokens || 0) + (phase2Result.promptTokens || 0),
       completionTokens: (phase1Result.completionTokens || 0) + (phase2Result.completionTokens || 0),
       model,
       provider: "gemini",
+      ...(groundedCitations.length > 0 ? { citations: groundedCitations } : {}),
     };
   }
 
@@ -604,12 +850,18 @@ ${phase1Text}`;
   const thinkingTokens = (usage as any).thoughtsTokenCount || 0;
   const totalCompletionTokens = visibleOutput + thinkingTokens;
 
+  // Grounded calls carry their REAL sources: extract groundingChunks web URLs
+  // (redirects dropped) so callers — and the two-phase extraction above — get
+  // verifiable citations instead of model-reconstructed ones.
+  const groundingCitations = useWebSearch ? extractGeminiGroundingCitations(response) : [];
+
   return {
     text,
     promptTokens: usage.promptTokenCount || 0,
     completionTokens: totalCompletionTokens,
     model,
     provider: "gemini",
+    ...(groundingCitations.length > 0 ? { citations: groundingCitations } : {}),
   };
 }
 

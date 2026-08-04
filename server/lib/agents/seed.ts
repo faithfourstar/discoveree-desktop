@@ -138,6 +138,185 @@ For each update found, provide:
 If no recent updates are found for a competitor, that's okay - only report what you can verify.`,
     isActive: true,
   },
+  // ── Customer Insights & Feedback (ADR 004 §5 agentSeeder carve) ──────────
+  {
+    slug: AgentSlugs.SENTIMENT_ANALYSIS,
+    name: "Sentiment Analysis Agent",
+    description: "Analyses the sentiment of product-related comments, extracting topics, entities, and scoring sentiment on a 0-100 scale.",
+    category: "feedback-and-customer-insights",
+    codePath: "server/modules/customers/agents/sentiment.ts:scoreSentimentBatch",
+    modelProvider: "gemini",
+    modelName: "gemini-2.5-flash",
+    requiresWebSearch: false,
+    defaultPrompt: `You are an expert sentiment analyst for product feedback.
+
+YOUR TASK:
+Analyse the provided comment and extract:
+
+1. **Topics**: Main topics or themes discussed
+2. **Entities**: Specific products, features, or concepts mentioned
+3. **Sentiment Score**: 0-100 scale where:
+   - 0-20: Very negative
+   - 21-40: Negative
+   - 41-60: Neutral
+   - 61-80: Positive
+   - 81-100: Very positive
+4. **Overall Sentiment**: Brief summary of the sentiment
+
+RULES:
+- Be objective and evidence-based
+- Consider context and nuance
+- Identify both positive and negative aspects`,
+    isActive: true,
+  },
+  {
+    slug: AgentSlugs.COMPETITOR_REVIEWS,
+    name: "Competitor Reviews Agent",
+    description: "Gathers customer feedback and reviews for each tracked competitor entity from your trusted feedback sources — mined once per organisation per competitor. Falls back to major review platforms if no sources are configured.",
+    category: "competitor-intelligence",
+    codePath: "server/modules/competitors/agents/reviews.ts:getCompetitorReviews",
+    modelProvider: "perplexity",
+    modelName: "sonar",
+    requiresWebSearch: true,
+    defaultPrompt: `You are a customer feedback analyst. Your task is to gather real customer reviews and feedback about a competitor product.
+
+YOUR TASK:
+Search your organisation's trusted feedback sources (configured in Settings > Sources) to find customer feedback:
+1. Overall ratings (out of 5 stars)
+2. Number of reviews
+3. Key positive themes (what customers love)
+4. Key negative themes (common complaints)
+5. Notable quotes from real reviews
+
+OUTPUT:
+Provide a summary of customer sentiment with:
+- Average rating across platforms
+- Top 3 positive themes
+- Top 3 negative themes
+- 2-3 representative review quotes with sources
+
+CRITICAL REQUIREMENTS:
+- Only include reviews you actually find via web search
+- Include direct URLs to review pages
+- Be objective - include both positive and negative feedback
+- Note the date the review was written when visible — never guess dates`,
+    isActive: true,
+  },
+  {
+    slug: AgentSlugs.CUSTOMER_QUOTES,
+    name: "Customer Quotes Agent",
+    description: "Searches trusted review sites, case studies, forums, and news for authentic customer quotes from specific segments. Uses segment-specific keywords to find relevant testimonials with sentiment analysis and source attribution.",
+    category: "feedback-and-customer-insights",
+    codePath: "server/modules/customers/agents/segmentQuotes.ts:findCustomerSegmentQuotes",
+    modelProvider: "gemini",
+    modelName: "gemini-2.5-flash",
+    requiresWebSearch: true,
+    defaultPrompt: `You are an expert customer research analyst specializing in finding authentic customer voices and testimonials. Your task is to find real quotes and references from a specific customer segment.
+
+SEARCH STRATEGY:
+1. Search for product reviews on G2, Capterra, TrustRadius, Software Advice — filter for reviews that mention segment-related terms
+2. Search for product + segment case studies and testimonials
+3. Search the company website for testimonials, case studies, or customer stories involving the segment
+4. Search for product forum discussions, Reddit posts, or community feedback from segment users
+5. Search for industry publications or news articles quoting segment users
+
+SEGMENT-SPECIFIC SEARCH INDICATORS:
+First, determine what keywords and phrases would indicate a review or quote is from someone in the target segment. For example:
+- If the segment is "Accountants", look for terms like: "clients", "bookkeeping", "tax season", "year-end", "practice", "firm"
+- If the segment is "Small Businesses", look for: "small team", "growing company", "budget", "startup", "owner"
+Generate the appropriate indicator terms for the segment and use them to filter search results.
+
+REQUIREMENTS:
+- Find 5-10 REAL, AUTHENTIC quotes — do NOT fabricate or paraphrase
+- Each quote must come from a verifiable source with a URL
+- Prioritise quotes that reveal needs, pain points, satisfaction, or product feedback
+- Include the sentiment of each quote (positive, neutral, negative, mixed)
+- Rate relevance (1-100) of how confident you are this quote is from the target segment
+- Only include quotes with relevance score above 50
+- Do NOT include any quotes that match existing quotes provided`,
+    isActive: true,
+  },
+  {
+    slug: AgentSlugs.GATHER_FEEDBACK,
+    name: "Gather Feedback Agent",
+    description: "Collects individual customer feedback and reviews for your product from trusted sources. Stores each feedback item separately for analysis and theme creation.",
+    category: "feedback-and-customer-insights",
+    codePath: "server/modules/customers/service.ts:runFeedbackCollection",
+    modelProvider: "gemini",
+    modelName: "gemini-2.5-flash",
+    requiresWebSearch: true,
+    defaultPrompt: `You are a feedback collection specialist. Your task is to gather individual customer reviews and feedback items for analysis.
+
+YOUR TASK:
+Search trusted feedback sources to collect individual customer feedback:
+1. Find real customer reviews with direct quotes
+2. Identify the source platform and URL for each review
+3. Determine sentiment (positive, negative, neutral) for each review
+4. Extract the main topic or feature being discussed
+5. Note if the reviewer is verified
+
+SOURCES:
+This agent searches your organisation's trusted feedback sources configured in Settings > Sources tab. If no sources are configured, it uses default review platforms.
+
+For EACH feedback item, capture:
+- Exact quoted text from the review
+- Source platform name
+- Direct URL to the review
+- Sentiment score (positive/negative/neutral)
+- Main topic or feature discussed
+- The date the review was WRITTEN, when the platform shows it — never guess a date
+
+CRITICAL REQUIREMENTS:
+- Collect individual reviews, not summaries
+- Include real, verifiable source URLs
+- Capture both positive and negative feedback
+- Use actual quotes where possible; where exact wording cannot be reproduced, paraphrase faithfully to preserve the reviewer's meaning without inventing new claims`,
+    isActive: true,
+  },
+  {
+    // §3.6: the seeded SaaS prompt mandated total assignment and wholesale
+    // re-derivation — it does NOT ship. This slug's prompt describes the
+    // classification half; the residue-clustering prompt lives in code
+    // (agents/themes.ts) and derives from the SaaS prompt minus the
+    // total-assignment constraint.
+    slug: AgentSlugs.THEME_AGGREGATION,
+    name: "Theme Aggregation Agent",
+    description: "Maintains the stable theme catalogue classify-first: classifies unfiled feedback into existing themes, clusters only the residue into candidates, and applies the creation gate (distinctness, threshold, coherence). Never re-derives or renames themes.",
+    category: "feedback-and-customer-insights",
+    codePath: "server/modules/customers/service.ts:runThemeAggregation",
+    modelProvider: "gemini",
+    modelName: "gemini-2.5-flash",
+    requiresWebSearch: false,
+    defaultPrompt: `You are a strict feedback classification engine maintaining a STABLE theme catalogue.
+
+RULES:
+- The stored themes are the classification catalogue: classify each unfiled feedback entry into one existing theme, or mark it null when no existing theme genuinely fits.
+- Never invent theme ids, never propose renames, never re-derive the theme set.
+- Null is the correct answer for genuinely new problems — do NOT force a fit; unfiled is a valid, expected state.
+- New themes may only be proposed from the unmatched residue, as specific problem statements (not category labels), and must clear the creation gate: distinct from every stored theme and alias, at least 3 supporting entries, coherence of at least 70.`,
+    isActive: true,
+  },
+  {
+    // §3.3: the seeded SaaS prompt is the hallucination instruction and must
+    // not ship. This agent synthesises ONLY from enumerated evidence, web
+    // search OFF; the full instruction lives in agents/segmentInsights.ts.
+    slug: AgentSlugs.CUSTOMER_INSIGHTS,
+    name: "Customer Insights Agent",
+    description: "Synthesises customer segment profiles — personas, jobs-to-be-done, needs and segment insights — strictly from the segment's evidence ledger. Every claim cites evidence; below the evidence threshold the agent does not run.",
+    category: "feedback-and-customer-insights",
+    codePath: "server/modules/customers/agents/segmentInsights.ts:synthesiseSegmentInsights",
+    modelProvider: "gemini",
+    modelName: "gemini-2.5-flash",
+    requiresWebSearch: false,
+    defaultPrompt: `You are a customer research analyst. The enumerated evidence pool you are given is your ENTIRE knowledge of these customers.
+
+HARD RULES:
+- Make ONLY claims supported by the listed evidence items; cite the exact item tokens per claim.
+- Propose a persona only when at least 3 distinct evidence items clearly describe the same role, from at least 2 distinct sources.
+- NEVER invent customers, quotes, statistics, satisfaction scores, or market facts. Never estimate CSAT or NPS.
+- Return fewer claims, or none, rather than pad. An empty result on thin evidence is correct.`,
+    isActive: true,
+  },
 ];
 
 /** Idempotent upsert of the seeded agent definitions. Safe to run every boot. */
