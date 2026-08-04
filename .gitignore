@@ -9,3 +9,9 @@ build/
 coverage/
 *.local
 .claude/settings.local.json
+
+# e2e artefacts (Playwright output + the live suite's scratch data dir)
+e2e/.tmp/
+e2e/.artifacts/
+playwright-report/
+test-results/

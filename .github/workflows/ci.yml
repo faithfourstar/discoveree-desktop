@@ -4,6 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Nightly full run (02:23 UTC): unit suite + BOTH e2e projects. Pushes and
+  # PRs run the deterministic mock project only, keeping CI time sane — the
+  # live project (real server + real client build + honest keyless walk) is
+  # nightly and on manual dispatch.
+  schedule:
+    - cron: "23 2 * * *"
+  workflow_dispatch:
 
 jobs:
   check:
@@ -32,3 +39,43 @@ jobs:
       - name: Test
         if: ${{ hashFiles('package.json') != '' }}
         run: npm test
+
+  e2e:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install (root)
+        run: npm ci
+
+      - name: Install (client)
+        run: npm ci --prefix client
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      # The client build runs once inside each project's webServer command
+      # (~4 s); both projects preview the same production build output.
+      - name: E2E — mock project (deterministic, no server, no keys)
+        run: npm run test:e2e
+
+      - name: E2E — live project (real server, honest keyless walk)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: npm run test:e2e:live
+
+      - name: Upload Playwright traces and reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: e2e/.artifacts/
+          retention-days: 14
+          if-no-files-found: ignore

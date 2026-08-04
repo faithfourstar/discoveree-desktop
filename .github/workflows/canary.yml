@@ -1,0 +1,38 @@
+name: Provider canary
+
+# Runs the product's OWN key-test code (testProviderKey) against real keys
+# held in repository secrets, nightly — provider drift that would hit
+# customers fails this job first. A missing secret skips that provider with
+# a notice; adding the keys is optional but recommended (docs/testing.md
+# documents the secret names). Job failure reaches the repo owner through
+# GitHub's normal workflow-failure notification.
+
+on:
+  schedule:
+    - cron: "47 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Run the provider canary
+        run: npm run canary
+        env:
+          CANARY_OPENAI_KEY: ${{ secrets.CANARY_OPENAI_KEY }}
+          CANARY_GEMINI_KEY: ${{ secrets.CANARY_GEMINI_KEY }}
+          CANARY_PERPLEXITY_KEY: ${{ secrets.CANARY_PERPLEXITY_KEY }}
+          CANARY_CLAUDE_KEY: ${{ secrets.CANARY_CLAUDE_KEY }}
+          CANARY_OPENROUTER_KEY: ${{ secrets.CANARY_OPENROUTER_KEY }}

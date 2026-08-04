@@ -9,8 +9,11 @@
     "node": ">=22"
   },
   "scripts": {
-    "check": "tsc --noEmit",
+    "check": "tsc --noEmit && tsc -p e2e --noEmit",
     "test": "vitest run",
+    "test:e2e": "playwright test -c e2e/playwright.mock.config.ts",
+    "test:e2e:live": "playwright test -c e2e/playwright.live.config.ts",
+    "canary": "tsx e2e/canary.mts",
     "db:generate": "drizzle-kit generate",
     "dev:server": "tsx watch server/main.ts"
   },
@@ -28,6 +31,7 @@
     "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/express": "^4.17.25",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.20.3",
