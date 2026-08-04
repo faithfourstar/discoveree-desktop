@@ -93,12 +93,15 @@ describe('migration idempotency (persistent directory)', () => {
       );
       expect(applied).toEqual([{ count: 1 }]);
 
-      // Table count is stable (no duplicate/partial DDL)
+      // Table count is stable (no duplicate/partial DDL).
+      // 47 after the ADR 003 baseline rewrite: +competitor_entities,
+      // +segment_entities, +personas, +persona_facets;
+      // −customer_segment_personas (replaced by the personas pair).
       const tables = await execRows<{ count: number }>(
         second.db,
         sql`select count(*)::int as count from information_schema.tables where table_schema = 'public'`,
       );
-      expect(tables).toEqual([{ count: 44 }]);
+      expect(tables).toEqual([{ count: 47 }]);
       await second.close();
     } finally {
       rmSync(dataDir, { recursive: true, force: true });

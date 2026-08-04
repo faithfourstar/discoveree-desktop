@@ -26,6 +26,18 @@
  *   thought_partner_conversations org/product, shared_conversations org,
  *   competitor_threat_level_history profile/product,
  *   customer_call_recordings segment).
+ *
+ * ADR 003 (multi-product entities) baseline rewrite:
+ * - `competitor_entities` (org-level canonical competitor identity + facts +
+ *   monitoring state; two-level self-referencing tree via parentEntityId).
+ * - `competitor_profiles` becomes the per-product FACET (entityId + productId;
+ *   classification, gate status, threat, comparisons).
+ * - `competitor_changes` re-keyed to entityId (drops productId/competitorName).
+ * - `ai_agent_executions` gains nullable entityId (entity-scoped agent gates).
+ * - Segment/persona tables reshaped ahead of the Customer Insights port:
+ *   `segment_entities` (org) + facet-shaped `customer_segment_profiles`,
+ *   `personas` (org identity) + `persona_facets` (per-product JTBD/goals);
+ *   `customer_segment_personas` is replaced by the personas pair.
  */
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, timestamp, integer, jsonb, boolean, index, real, serial, uniqueIndex } from "drizzle-orm/pg-core";
@@ -762,7 +774,8 @@ export const aiAgentExecutions = pgTable("ai_agent_executions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   agentId: varchar("agent_id").notNull(),
   organizationId: varchar("organization_id"),
-  productId: varchar("product_id"), // Which product this execution was for
+  productId: varchar("product_id"), // Which product this execution was for (product-scoped agents)
+  entityId: varchar("entity_id"), // Which competitor entity this execution was for (entity-scoped agents, ADR 003 §2.7)
   promptId: varchar("prompt_id"), // Which prompt version was used
   triggerType: text("trigger_type").notNull().default("automatic"), // automatic, manual, test
   triggerContext: text("trigger_context"), // Description of what triggered the run
@@ -783,12 +796,88 @@ export const aiAgentExecutions = pgTable("ai_agent_executions", {
   completedAt: timestamp("completed_at"),
 });
 
-// Competitor Changes - Track recent changes detected from competitor websites
+// Competitor Entities — org-level canonical competitor identity (ADR 003 §2).
+// One row per external referent per organisation; researched and monitored
+// ONCE per org. Two-level tree: a root node (parentEntityId null) is the
+// company; child nodes are its sub-branded products (§2.9). Facts live on the
+// node where they are observed. The two-level invariant (a parent must itself
+// be a root) is enforced in service code, not SQL — matching this schema's
+// FK-less house style.
+export const competitorEntities = pgTable("competitor_entities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull(),
+  // Identity
+  name: text("name").notNull(), // fully qualified for sub-brands ("Xero Payroll", never bare "Payroll")
+  normalizedName: text("normalized_name").notNull(), // dedup key — unique per org across BOTH tree levels
+  parentEntityId: varchar("parent_entity_id"), // nullable self-reference: company → their products (§2.9)
+  url: text("url"),
+  urlSource: text("url_source").default("ai-discovered"), // manual, ai-discovered, review-site
+  domain: text("domain"), // second lookup key, extracted from url at write time (§2.2)
+  parentCompany: text("parent_company"), // corporate ownership OUTSIDE the tracked tree (plain label, e.g. "Sage")
+  description: text("description"),
+  descriptionSourceUrl: text("description_source_url"),
+  summaryCitations: jsonb("summary_citations"), // Array of source URLs; [n] markers refer to index n-1
+  // Their product facts
+  keyFeatures: jsonb("key_features"), // Array of {feature, description?, sourceUrl}
+  markets: jsonb("markets"), // Array of {market, sourceUrl}
+  customerSegments: jsonb("customer_segments"), // the competitor's own target segments
+  integrations: jsonb("integrations"), // Array of {name, category, description, sourceUrl, integrationType, dataScope}
+  // Pricing
+  pricing: text("pricing"),
+  pricingSourceUrl: text("pricing_source_url"),
+  pricingTiers: jsonb("pricing_tiers"), // Array of {name, price, billingPeriod, features}
+  pricingFreeTrial: boolean("pricing_free_trial"),
+  pricingNotes: text("pricing_notes"),
+  // Reviews (absolute)
+  reviews: jsonb("reviews"), // Array of {text, source, sourceUrl, sentiment, date}
+  reviewPlatforms: jsonb("review_platforms"), // Array of {name, url, rating, reviewCount}
+  reviewPositiveThemes: jsonb("review_positive_themes"),
+  reviewNegativeThemes: jsonb("review_negative_themes"),
+  reviewAverageRating: real("review_average_rating"), // 0-5
+  reviewTotalCount: integer("review_total_count"),
+  // Monitoring state (company-level watches live on the node that carries the URL)
+  helpCenterUrl: text("help_center_url"),
+  helpCenterUrlSourceUrl: text("help_center_url_source_url"),
+  changelogUrl: text("changelog_url"),
+  changelogUrlSourceUrl: text("changelog_url_source_url"),
+  changelogContentHash: text("changelog_content_hash"),
+  changelogLastCheckedAt: timestamp("changelog_last_checked_at"),
+  githubRepoUrl: text("github_repo_url"),
+  githubStats: jsonb("github_stats"), // { stars, forks, openIssues, fetchedAt, previousStars? }
+  validReleaseSources: jsonb("valid_release_sources"), // { urls: string[], checkedAt: string } | null
+  announcements: jsonb("announcements"), // Array of { date, title, description, type, sourceUrl? }
+  announcementsAnalysis: text("announcements_analysis"),
+  investorRelations: jsonb("investor_relations"),
+  // Entity enrichment meta (entity agents, §2.7)
+  enrichmentStatus: text("enrichment_status").default("pending"), // pending, enriching, completed, failed
+  lastEnrichedAt: timestamp("last_enriched_at"),
+  // User fact-corrections — a correction of a fact about the competitor is
+  // seen by every product (single-writer governance).
+  userNews: jsonb("user_news"),
+  userPricing: jsonb("user_pricing"),
+  userFeatures: jsonb("user_features"),
+  userIntegrations: jsonb("user_integrations"),
+  userReviews: jsonb("user_reviews"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("idx_competitor_entities_org_normalized").on(table.organizationId, table.normalizedName),
+  index("idx_competitor_entities_org_domain").on(table.organizationId, table.domain),
+  index("idx_competitor_entities_parent").on(table.parentEntityId),
+]);
+
+export const insertCompetitorEntitySchema = createInsertSchema(competitorEntities).omit({ id: true, createdAt: true, updatedAt: true });
+export type CompetitorEntity = typeof competitorEntities.$inferSelect;
+export type InsertCompetitorEntity = z.infer<typeof insertCompetitorEntitySchema>;
+
+// Competitor Changes — observed once, about the ENTITY node (ADR 003 §2.4).
+// Re-keyed from (productId, competitorName) to entityId: a product's feed is
+// a join over its tracked facets, and the §9 feed-exclusion rule is the join
+// predicate rather than a name filter.
 export const competitorChanges = pgTable("competitor_changes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  productId: varchar("product_id").notNull(),
-  competitorName: text("competitor_name").notNull(),
-  sourceCategory: text("source_category").default("competitor"), // competitor or adjacent
+  entityId: varchar("entity_id").notNull(), // company or product node — wherever the change was observed
+  sourceCategory: text("source_category").default("competitor"), // classification of the scan that observed it (feed filtering joins the facet instead)
   changeType: text("change_type").notNull().default("update"), // feature, pricing, update, announcement
   changeTitle: text("change_title").notNull(),
   changeDescription: text("change_description"),
@@ -802,92 +891,47 @@ export const competitorChanges = pgTable("competitor_changes", {
   failureReason: text("failure_reason"), // structured failure code if agent run failed for this item
   detectedAt: timestamp("detected_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_competitor_changes_entity").on(table.entityId, table.detectedAt),
+]);
 
-// Competitor Profiles - Cached enriched competitor data for fast reads
+// Competitor Profiles — the per-product FACET (ADR 003 §2.2): "the profile of
+// this competitor AS SEEN BY THIS PRODUCT". Entity facts (identity, features,
+// pricing, reviews, monitoring state) live on competitor_entities; everything
+// here is relative to OUR product. The facet id remains the stable competitor
+// id on the API/MCP surface (§2.5). entityId may reference either a company
+// node or one of its product nodes (§2.9).
 export const competitorProfiles = pgTable("competitor_profiles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   productId: varchar("product_id").notNull(),
-  competitorName: text("competitor_name").notNull(),
-  competitorUrl: text("competitor_url"),
-  competitorUrlSource: text("competitor_url_source").default("ai-discovered"), // manual, ai-discovered, review-site
-  sourceCategory: text("source_category").default("competitor"), // competitor or adjacent
+  entityId: varchar("entity_id").notNull(), // -> competitor_entities.id (company or product node)
+  sourceCategory: text("source_category").default("competitor"), // competitor | adjacent | own_product — classification IS per product
   // Lifecycle status (spec 2.4 review-before-save gate): "proposed" rows are
   // drafts awaiting human accept — excluded from the default list, the changes
-  // feed, and scheduled agent runs. POST /api/competitors creates "proposed"
-  // explicitly; the default stays "tracked" so baseline seeds/imports are sane.
+  // feed, and scheduled agent runs. POST creates "proposed" explicitly; the
+  // default stays "tracked" so baseline seeds/imports are sane. The gate
+  // applies AT THE FACET (ADR 003 §2.3) — never org-wide.
   status: text("status").notNull().default("tracked"), // proposed | tracked
-  description: text("description"),
-  descriptionSourceUrl: text("description_source_url"),
-  helpCenterUrl: text("help_center_url"), // URL to competitor's help center/documentation
-  helpCenterUrlSourceUrl: text("help_center_url_source_url"), // Source where help center URL was found
-  keyFeatures: jsonb("key_features"), // Array of {feature, sourceUrl}
-  pricing: text("pricing"),
-  pricingSourceUrl: text("pricing_source_url"),
-  pricingTiers: jsonb("pricing_tiers"), // Array of {name, price, billingPeriod, features} - full pricing details
-  pricingFreeTrial: boolean("pricing_free_trial"), // Whether they offer a free trial
-  pricingNotes: text("pricing_notes"), // Pricing caveats and additional notes
-  markets: jsonb("markets"), // Array of {market, sourceUrl}
-  customerSegments: jsonb("customer_segments"), // Array of {segment, sourceUrl}
-  keyDifferentiators: jsonb("key_differentiators"), // Array of strings - key differentiators from AI analysis
-  summaryCitations: jsonb("summary_citations"), // Array of source URLs; [n] markers in summary/differentiators refer to index n-1
-  integrations: jsonb("integrations"), // Array of {name, category, description, sourceUrl, integrationType, dataScope} - AI-discovered integrations
+  threatLevel: text("threat_level").default("none"), // none, watch, competitive, big_threat
+  keyDifferentiators: jsonb("key_differentiators"), // Array of strings — theirs vs US
+  featureStrengthSummary: text("feature_strength_summary"), // competitor's customer-validated feature strengths vs our product
+  pricingAnalysis: text("pricing_analysis"), // strategic comparison of competitor pricing vs own product
   integrationAnalysis: jsonb("integration_analysis"), // {ecosystemStrategy, dataAccessSummary, notableGaps, vsOwnProduct}
-  reviews: jsonb("reviews"), // Array of {text, source, sourceUrl, sentiment, date}
-  reviewPlatforms: jsonb("review_platforms"), // Array of {name, url, rating, reviewCount} - review platform data
-  reviewPositiveThemes: jsonb("review_positive_themes"), // Array of strings - positive feedback themes
-  reviewNegativeThemes: jsonb("review_negative_themes"), // Array of strings - negative feedback themes
-  reviewAverageRating: real("review_average_rating"), // Overall average rating (0-5)
-  reviewTotalCount: integer("review_total_count"), // Total number of reviews across platforms
+  // JTBD & Persona Coverage mapping — against OUR personas
+  featurePersonaMapping: jsonb("feature_persona_mapping"), // { groups: [{jtbd, personas, features}], gaps: [{jtbd, personas}], generatedAt }
+  // User-editable overlay of the facet's rendered positioning/differentiators
+  // view (fact-shaped user* corrections moved to the entity).
+  userSummary: jsonb("user_summary"), // {positioning, differentiators, markets, customerSegments}
+  // Facet enrichment meta (facet agents: differentiators, comparisons)
   enrichmentStatus: text("enrichment_status").default("pending"), // pending, enriching, completed, failed
   lastEnrichedAt: timestamp("last_enriched_at"),
-
-  // User-editable fields for each section (overrides AI data when present)
-  userSummary: jsonb("user_summary"), // {positioning, differentiators, markets, customerSegments}
-  userNews: jsonb("user_news"), // Array of news items added by user
-  userPricing: jsonb("user_pricing"), // {model, tiers, notes} - user override for pricing
-  userFeatures: jsonb("user_features"), // Array of features added/edited by user
-  userIntegrations: jsonb("user_integrations"), // Array of integrations added by user
-  userReviews: jsonb("user_reviews"), // {themes, quotes, averageRating} - user override for reviews
-
-  investorRelations: jsonb("investor_relations"), // {companyType, productEconomics, investments, revenueBreakdown, financialHighlights, sources, lastUpdated}
-
-  featureStrengthSummary: text("feature_strength_summary"), // AI-generated paragraph: competitor's customer-validated feature strengths vs our product
-
-  pricingAnalysis: text("pricing_analysis"), // AI-generated paragraph: strategic comparison of competitor pricing vs own product, positioning signals, performance indicators
-
-  threatLevel: text("threat_level").default("none"), // none, watch, competitive, big_threat
-
-  parentCompany: text("parent_company"), // Parent/owning company name if different from product name (e.g. "Sage" for AutoEntry)
-
-  // Battlecard columns (battlecardMessages/ReadyFlag/Output) were DROPPED for
-  // desktop (ADR 002 risk 8 ruling): battlecards are CUT — MCP replaces them.
-
-  // JTBD & Persona Coverage mapping — AI-generated, cached on-demand
-  featurePersonaMapping: jsonb("feature_persona_mapping"), // { groups: [{jtbd, personas, features: [{name, description, coverage}]}], gaps: [{jtbd, personas}], generatedAt }
-
-  // Product Announcements — AI-gathered product releases for trailing 6 months
-  announcements: jsonb("announcements"), // Array of { date, title, description, type: "major" | "minor", sourceUrl? }
-  announcementsAnalysis: text("announcements_analysis"), // AI-generated paragraph summarising release patterns
-
-  // Cached validated release-source URLs for the product-signals agent
-  // Avoids re-probing /changelog, /release-notes etc. on every scheduled run
-  validReleaseSources: jsonb("valid_release_sources"), // { urls: string[], checkedAt: string } | null
-
-  // GitHub repository monitoring — works for own product AND competitors since
-  // the own product is also a competitor_profiles row (isOwnProduct entry)
-  githubRepoUrl: text("github_repo_url"), // e.g. https://github.com/org/repo
-  githubStats: jsonb("github_stats"), // { stars, forks, openIssues, fetchedAt, previousStars? }
-
-  // Public changelog monitoring
-  changelogUrl: text("changelog_url"), // Verified public changelog / release-notes page
-  changelogUrlSourceUrl: text("changelog_url_source_url"), // 'manual_update' or discovery source (mirrors helpCenterUrlSourceUrl)
-  changelogContentHash: text("changelog_content_hash"), // sha256 of last-fetched changelog content, for cheap diffing
-  changelogLastCheckedAt: timestamp("changelog_last_checked_at"),
-
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // Facet-grain duplicate rule (ADR 003 §2.9.2): one facet per (product, node).
+  uniqueIndex("idx_competitor_profiles_product_entity").on(table.productId, table.entityId),
+  index("idx_competitor_profiles_entity").on(table.entityId),
+]);
 
 export const insertCompetitorProfileSchema = createInsertSchema(competitorProfiles).omit({ id: true, createdAt: true, updatedAt: true });
 
@@ -1385,31 +1429,49 @@ export const llmApiKeysUpdateSchema = z.object({
 
 export type LlmApiKeysUpdate = z.infer<typeof llmApiKeysUpdateSchema>;
 
-// Customer Segment Profiles - rich profiles for each customer segment
+// Segment Entities — org-level canonical segment vocabulary (ADR 003 §2.6).
+// One segment vocabulary, not two: commercial revenue-by-segment will
+// reference segment_entities.id, never a name string. Deliberately FLAT — no
+// parentEntityId (segment hierarchies had no evidence in the SaaS).
+// normalizedName is produced by the ported segmentNormalization helper when
+// the Customer Insights module lands (sprint 3b); nothing writes these rows
+// in sprint 3a.
+export const segmentEntities = pgTable("segment_entities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull(),
+  name: text("name").notNull(),
+  normalizedName: text("normalized_name").notNull(),
+  segmentType: text("segment_type").default("customer_segment"), // customer_segment | industry_vertical | primary_persona | partnership
+  description: text("description"),
+  sourceUrl: text("source_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("idx_segment_entities_org_normalized").on(table.organizationId, table.normalizedName),
+]);
+
+export const insertSegmentEntitySchema = createInsertSchema(segmentEntities).omit({ id: true, createdAt: true, updatedAt: true });
+export type SegmentEntity = typeof segmentEntities.$inferSelect;
+export type InsertSegmentEntity = z.infer<typeof insertSegmentEntitySchema>;
+
+// Customer Segment Profiles — the per-product FACET (ADR 003 §2.6): keeps
+// everything that only means something against a product. Identity columns
+// (segmentName/segmentDescription/segmentType/sourceUrl) moved to
+// segment_entities; the legacy single-persona columns are NOT ported (the
+// multi-persona `personas` table is the real model).
 export const customerSegmentProfiles = pgTable("customer_segment_profiles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   productId: varchar("product_id").notNull(),
   organizationId: varchar("organization_id").notNull(),
-  segmentName: text("segment_name").notNull(),
-  segmentDescription: text("segment_description"),
-  segmentType: text("segment_type").default("customer_segment"), // "customer_segment", "industry_vertical", "primary_persona", or "partnership"
-  sourceUrl: text("source_url"),
+  segmentEntityId: varchar("segment_entity_id").notNull(), // -> segment_entities.id
 
-  // Needs Assessment (legacy - kept for backward compatibility)
+  // Needs Assessment
   needsSummary: text("needs_summary"),
   needs: jsonb("needs"), // Array of {need, importance: 1-5, satisfaction: 1-5, notes}
   overallSatisfaction: real("overall_satisfaction"), // 0-100
 
-  // Jobs to be Done (JTBD framework)
+  // Jobs to be Done (JTBD framework) — per product by explicit owner requirement
   jobsToBeDone: jsonb("jobs_to_be_done"), // {coreJob, functionalJobs[], emotionalJobs[], socialJobs[], relatedJobs[], desiredOutcomes[], summary}
-
-  // Persona
-  personaTitle: text("persona_title"),
-  personaDescription: text("persona_description"),
-  personaDemographics: jsonb("persona_demographics"), // {role, industry, companySize, experience}
-  personaGoals: jsonb("persona_goals"), // Array of strings
-  personaPainPoints: jsonb("persona_pain_points"), // Array of strings
-  personaBehaviors: jsonb("persona_behaviors"), // Array of strings
 
   // CSAT
   csatScore: real("csat_score"), // 0-100
@@ -1454,33 +1516,58 @@ export const customerSegmentProfiles = pgTable("customer_segment_profiles", {
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  // One facet per (product, segment entity) — mirrors the competitor facet grain.
+  uniqueIndex("idx_customer_segment_profiles_product_entity").on(table.productId, table.segmentEntityId),
+  index("idx_customer_segment_profiles_entity").on(table.segmentEntityId),
+]);
 
 export const insertCustomerSegmentProfileSchema = createInsertSchema(customerSegmentProfiles).omit({ id: true, createdAt: true, updatedAt: true });
 
 export type CustomerSegmentProfile = typeof customerSegmentProfiles.$inferSelect;
 export type InsertCustomerSegmentProfile = z.infer<typeof insertCustomerSegmentProfileSchema>;
 
-// Customer Segment Personas - multiple personas per segment
-export const customerSegmentPersonas = pgTable("customer_segment_personas", {
+// Personas — org-level persona IDENTITY (ADR 003 §2.6; replaces the SaaS
+// customer_segment_personas). Attributes that describe the PERSON, not the
+// relationship to a product.
+export const personas = pgTable("personas", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  segmentProfileId: varchar("segment_profile_id").notNull(),
-  productId: varchar("product_id").notNull(),
-  personaTitle: text("persona_title").notNull(),
-  personaDescription: text("persona_description"),
-  personaDemographics: jsonb("persona_demographics"), // {role, industry, companySize, experience}
-  personaGoals: jsonb("persona_goals"), // Array of strings
-  personaPainPoints: jsonb("persona_pain_points"), // Array of strings
-  personaBehaviors: jsonb("persona_behaviors"), // Array of strings
+  segmentEntityId: varchar("segment_entity_id").notNull(), // -> segment_entities.id
+  title: text("title").notNull(),
+  description: text("description"),
+  demographics: jsonb("demographics"), // {role, industry, companySize, experience}
+  behaviours: jsonb("behaviours"), // Array of strings
   sortOrder: integer("sort_order").default(0),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_personas_segment_entity").on(table.segmentEntityId),
+]);
 
-export const insertCustomerSegmentPersonaSchema = createInsertSchema(customerSegmentPersonas).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertPersonaSchema = createInsertSchema(personas).omit({ id: true, createdAt: true, updatedAt: true });
+export type Persona = typeof personas.$inferSelect;
+export type InsertPersona = z.infer<typeof insertPersonaSchema>;
 
-export type CustomerSegmentPersona = typeof customerSegmentPersonas.$inferSelect;
-export type InsertCustomerSegmentPersona = z.infer<typeof insertCustomerSegmentPersonaSchema>;
+// Persona Facets — the per-product side of a persona (ADR 003 §2.6): "even
+// when a persona is shared, its JTBD differ per product" made literal. A
+// persona with no facet for a product is not part of that product's context.
+export const personaFacets = pgTable("persona_facets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  personaId: varchar("persona_id").notNull(), // -> personas.id
+  productId: varchar("product_id").notNull(),
+  goals: jsonb("goals"), // Array of strings
+  painPoints: jsonb("pain_points"), // Array of strings
+  jobsToBeDone: jsonb("jobs_to_be_done"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("idx_persona_facets_persona_product").on(table.personaId, table.productId),
+  index("idx_persona_facets_product").on(table.productId),
+]);
+
+export const insertPersonaFacetSchema = createInsertSchema(personaFacets).omit({ id: true, createdAt: true, updatedAt: true });
+export type PersonaFacet = typeof personaFacets.$inferSelect;
+export type InsertPersonaFacet = z.infer<typeof insertPersonaFacetSchema>;
 
 // Deleted Customer Segment Names — blocklist preventing agents re-creating
 // manually deleted segments ("merge, don't replace" governance).
@@ -1704,6 +1791,8 @@ export type CallRecordingSource = typeof CALL_RECORDING_SOURCES[number];
 
 export const customerCallRecordings = pgTable("customer_call_recordings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  // -> customer_segment_profiles.id (the FACET id — a call happens in the
+  // context of a product conversation; ADR 003 §2.6)
   segmentId: varchar("segment_id").notNull(),
   customerName: text("customer_name").notNull(),
   contextType: text("context_type").notNull().default("other"),

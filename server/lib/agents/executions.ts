@@ -70,6 +70,47 @@ export async function getRecentExecutionsForAgentAndProduct(
     .limit(limit);
 }
 
+/**
+ * Entity twin of getLastExecutionForAgentAndProduct (ADR 003 §2.7): the
+ * frequency gate for entity-scoped agents keys on (agent, entity), so
+ * monitoring runs once per entity node regardless of how many products face
+ * it.
+ */
+export async function getLastExecutionForAgentAndEntity(
+  agentId: string,
+  entityId: string,
+): Promise<AiAgentExecution | null> {
+  const db = getDb();
+  const [execution] = await db
+    .select()
+    .from(aiAgentExecutions)
+    .where(and(
+      eq(aiAgentExecutions.agentId, agentId),
+      eq(aiAgentExecutions.entityId, entityId),
+    ))
+    .orderBy(desc(aiAgentExecutions.startedAt))
+    .limit(1);
+  return execution || null;
+}
+
+/** Entity twin of getRecentExecutionsForAgentAndProduct (circuit breaker). */
+export async function getRecentExecutionsForAgentAndEntity(
+  agentId: string,
+  entityId: string,
+  limit: number,
+): Promise<AiAgentExecution[]> {
+  const db = getDb();
+  return db
+    .select()
+    .from(aiAgentExecutions)
+    .where(and(
+      eq(aiAgentExecutions.agentId, agentId),
+      eq(aiAgentExecutions.entityId, entityId),
+    ))
+    .orderBy(desc(aiAgentExecutions.startedAt))
+    .limit(limit);
+}
+
 export async function createAiAgentExecution(
   insertExecution: InsertAiAgentExecution,
 ): Promise<AiAgentExecution> {
@@ -127,6 +168,8 @@ export interface AgentExecutionContext {
   agentSlug: string;
   triggerType: "api" | "scheduled" | "manual";
   productId?: string | null;
+  /** Competitor entity for entity-scoped runs (ADR 003 §2.7). */
+  entityId?: string | null;
   opportunityId?: string | null;
   userId?: string | null;
   inputData?: unknown;
@@ -148,15 +191,19 @@ export async function trackAgentExecution<T>(
 
     console.log(`[Agent: ${agent.name}] Starting execution (trigger: ${context.triggerType})`, {
       productId: context.productId || null,
+      entityId: context.entityId || null,
       opportunityId: context.opportunityId || null,
     });
 
     const execution = await createAiAgentExecution({
       agentId: agent.id,
       triggerType: context.triggerType,
-      triggerContext: context.productId ? `Product: ${context.productId}` : (context.opportunityId ? `Opportunity: ${context.opportunityId}` : null),
+      triggerContext: context.productId
+        ? `Product: ${context.productId}`
+        : (context.entityId ? `Entity: ${context.entityId}` : (context.opportunityId ? `Opportunity: ${context.opportunityId}` : null)),
       inputParameters: context.inputData ? context.inputData : null,
       productId: context.productId || null,
+      entityId: context.entityId || null,
       status: "running",
     });
 

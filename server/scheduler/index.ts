@@ -1,13 +1,15 @@
 /**
- * Scheduler (ADR 002 §7): a minute tick over products × registered agents.
- * The scheduler only runs while the app is open; the catch-up pass
- * (catchUp.ts) handles everything missed while it was closed.
+ * Scheduler (ADR 002 §7, refined by ADR 003 §2.7): a minute tick over
+ * products × product-scoped agents, then org entities × entity-scoped agents
+ * (monitoring runs once per entity node, not per facet). The scheduler only
+ * runs while the app is open; the catch-up pass (catchUp.ts) handles
+ * everything missed while it was closed.
  */
 import type { AgentSchedule, Product } from "@shared/schema";
 import { getAllProducts } from "../modules/products/storage.js";
 import { trackAgentExecution } from "../lib/agents/executions.js";
-import { shouldRunAgentNow } from "./gates.js";
-import { getScheduledAgents, withInFlightGuard, type ScheduledAgent } from "./registry.js";
+import { shouldRunAgentNow, shouldRunEntityAgentNow } from "./gates.js";
+import { getEntityScheduledAgents, getScheduledAgents, withInFlightGuard, type ScheduledAgent } from "./registry.js";
 
 const TICK_INTERVAL_MS = 60_000;
 
@@ -48,6 +50,34 @@ export async function runSchedulerTick(): Promise<void> {
           );
         } catch (err) {
           console.error(`[Scheduler] ${agent.slug} error for ${product.name}:`, err instanceof Error ? err.message : err);
+        }
+      }
+    }
+
+    // Entity-scoped agents (ADR 003 §2.7): once per entity node with ≥1
+    // tracked facet, however many products face it. The registering module
+    // resolves targets and effective schedules; gates key on (agent, entity).
+    for (const agent of getEntityScheduledAgents()) {
+      let targets;
+      try {
+        targets = await agent.listTargets();
+      } catch (err) {
+        console.error(`[Scheduler] ${agent.slug} target resolution failed:`, err instanceof Error ? err.message : err);
+        continue;
+      }
+      for (const target of targets) {
+        try {
+          if (!await shouldRunEntityAgentNow(agent.slug, target.entityId, target.schedule, target.entityName, target.timezone)) {
+            continue;
+          }
+          await withInFlightGuard(agent.slug, target.entityId, () =>
+            trackAgentExecution(
+              { agentSlug: agent.slug, triggerType: "scheduled", entityId: target.entityId },
+              () => agent.run(target),
+            ),
+          );
+        } catch (err) {
+          console.error(`[Scheduler] ${agent.slug} error for entity ${target.entityName}:`, err instanceof Error ? err.message : err);
         }
       }
     }

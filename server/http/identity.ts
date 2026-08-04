@@ -13,6 +13,11 @@ import { LOCAL_ORGANIZATION_ID, LOCAL_USER_ID } from "../db/seedLocal.js";
 export interface RequestCtx {
   organizationId: string;
   userId: string;
+  /**
+   * Set by the productContext middleware (ADR 003 §1.1) on
+   * /api/products/:productId routes; absent on org-scoped routes.
+   */
+  productId?: string;
 }
 
 declare module "express-serve-static-core" {

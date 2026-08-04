@@ -14,7 +14,9 @@
 import type { AgentSchedule } from "@shared/schema";
 import { getAiAgentBySlug } from "../lib/agents/registry.js";
 import {
+  getLastExecutionForAgentAndEntity,
   getLastExecutionForAgentAndProduct,
+  getRecentExecutionsForAgentAndEntity,
   getRecentExecutionsForAgentAndProduct,
 } from "../lib/agents/executions.js";
 
@@ -103,6 +105,90 @@ export async function passesCircuitBreaker(
     console.error(`[Scheduler] Circuit breaker check error for ${agentSlug}:`, cbErr);
     return true;
   }
+}
+
+// ── Entity-scoped twins (ADR 003 §2.7) ──────────────────────────────────────
+// Same gate semantics as the product-scoped versions, keyed on
+// (agent, entity) via ai_agent_executions.entityId, so the frequency gate /
+// circuit-breaker machinery is reused unchanged for entity agents.
+
+export async function passesFrequencyGateForEntity(
+  agentSlug: string,
+  entityId: string,
+  schedule: { frequencyValue: number; frequencyUnit: "hours" | "days" },
+  entityName: string,
+): Promise<boolean> {
+  try {
+    const agent = await getAiAgentBySlug(agentSlug);
+    if (!agent) return true;
+    const lastExecution = await getLastExecutionForAgentAndEntity(agent.id, entityId);
+    if (!lastExecution || !lastExecution.startedAt) return true;
+    const frequencyMs = frequencyToMs(schedule.frequencyValue, schedule.frequencyUnit);
+    const msSinceLast = Date.now() - new Date(lastExecution.startedAt).getTime();
+    if (msSinceLast < frequencyMs) {
+      const hoursAgo = Math.round(msSinceLast / 3600000 * 10) / 10;
+      const hoursLeft = Math.round((frequencyMs - msSinceLast) / 3600000 * 10) / 10;
+      console.log(`[Scheduler] Skipping ${agentSlug} for entity ${entityName} — last ran ${hoursAgo}h ago (status: ${lastExecution.status}), next run in ${hoursLeft}h`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error(`[Scheduler] Error checking entity frequency gate for ${agentSlug}:`, err);
+    return true;
+  }
+}
+
+export async function passesCircuitBreakerForEntity(
+  agentSlug: string,
+  entityId: string,
+  schedule: { frequencyValue: number; frequencyUnit: "hours" | "days" },
+  entityName: string,
+): Promise<boolean> {
+  try {
+    const agent = await getAiAgentBySlug(agentSlug);
+    if (!agent) return true;
+    const agentExecs = await getRecentExecutionsForAgentAndEntity(
+      agent.id, entityId, CIRCUIT_BREAKER_THRESHOLD,
+    );
+    if (agentExecs.length >= CIRCUIT_BREAKER_THRESHOLD) {
+      const allFailed = agentExecs.every((e) => e.status === "failed");
+      if (allFailed) {
+        const mostRecentFailure = agentExecs[0]!;
+        const suppressMs = frequencyToMs(schedule.frequencyValue, schedule.frequencyUnit) * CIRCUIT_BREAKER_MULTIPLIER;
+        const msSinceMostRecent = mostRecentFailure.startedAt
+          ? Date.now() - new Date(mostRecentFailure.startedAt).getTime()
+          : 0;
+        if (msSinceMostRecent < suppressMs) {
+          const hoursLeft = Math.round((suppressMs - msSinceMostRecent) / 3600000 * 10) / 10;
+          console.warn(
+            `[Scheduler] Circuit breaker open for ${agentSlug}/entity ${entityName} — ` +
+            `${CIRCUIT_BREAKER_THRESHOLD} consecutive failures. Suppressing for ${hoursLeft}h more.`,
+          );
+          return false;
+        }
+      }
+    }
+    return true;
+  } catch (cbErr) {
+    console.error(`[Scheduler] Entity circuit breaker check error for ${agentSlug}:`, cbErr);
+    return true;
+  }
+}
+
+/** Entity twin of shouldRunAgentNow (tick eligibility for entity agents). */
+export async function shouldRunEntityAgentNow(
+  agentSlug: string,
+  entityId: string,
+  schedule: AgentSchedule,
+  entityName: string,
+  timezone: string,
+): Promise<boolean> {
+  if (!schedule.enabled) return false;
+  if (!await passesFrequencyGateForEntity(agentSlug, entityId, schedule, entityName)) return false;
+  if (!await passesCircuitBreakerForEntity(agentSlug, entityId, schedule, entityName)) return false;
+
+  if (schedule.frequencyUnit === "hours") return true;
+  return shouldRunSchedule(schedule, timezone);
 }
 
 /**

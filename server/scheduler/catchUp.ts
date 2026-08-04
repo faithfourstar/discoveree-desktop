@@ -21,13 +21,20 @@ import type { AgentSchedule, Product } from "@shared/schema";
 import { getAllProducts } from "../modules/products/storage.js";
 import { runAgentBatch } from "../lib/agents/batch.js";
 import {
+  getLastExecutionForAgentAndEntity,
   getLastExecutionForAgentAndProduct,
   resetStaleRunningExecutions,
   trackAgentExecution,
 } from "../lib/agents/executions.js";
 import { getAiAgentBySlug } from "../lib/agents/registry.js";
-import { frequencyToMs, passesCircuitBreaker } from "./gates.js";
-import { getScheduledAgents, withInFlightGuard, type ScheduledAgent } from "./registry.js";
+import { frequencyToMs, passesCircuitBreaker, passesCircuitBreakerForEntity } from "./gates.js";
+import {
+  getEntityScheduledAgents,
+  getScheduledAgents,
+  withInFlightGuard,
+  type EntityAgentTarget,
+  type ScheduledAgent,
+} from "./registry.js";
 
 export const DEFAULT_CATCH_UP_DELAY_MS = 45_000;
 
@@ -53,9 +60,23 @@ export async function isAgentOverdue(
   return Date.now() - new Date(last.startedAt).getTime() >= frequencyMs;
 }
 
+/** Entity twin of isAgentOverdue (ADR 003 §2.7) — keyed on (agent, entity). */
+export async function isEntityAgentOverdue(
+  slug: string,
+  target: EntityAgentTarget,
+): Promise<boolean> {
+  const agentRow = await getAiAgentBySlug(slug);
+  if (!agentRow) return true; // no registry row yet — first-ever run
+  const last = await getLastExecutionForAgentAndEntity(agentRow.id, target.entityId);
+  if (!last || !last.startedAt) return true;
+  const frequencyMs = frequencyToMs(target.schedule.frequencyValue, target.schedule.frequencyUnit);
+  return Date.now() - new Date(last.startedAt).getTime() >= frequencyMs;
+}
+
 export interface CatchUpResult {
-  ran: Array<{ slug: string; productId: string }>;
-  skipped: Array<{ slug: string; productId: string; reason: "disabled" | "not-overdue" | "circuit-breaker" | "in-flight" }>;
+  /** Product agents carry productId; entity agents carry entityId. */
+  ran: Array<{ slug: string; productId?: string; entityId?: string }>;
+  skipped: Array<{ slug: string; productId?: string; entityId?: string; reason: "disabled" | "not-overdue" | "circuit-breaker" | "in-flight" }>;
 }
 
 /**
@@ -75,9 +96,10 @@ export async function runCatchUpPass(): Promise<CatchUpResult> {
 
     const products = await getAllProducts();
     const agents = getScheduledAgents();
-    if (products.length === 0 || agents.length === 0) return result;
+    const entityAgents = getEntityScheduledAgents();
+    if ((products.length === 0 || agents.length === 0) && entityAgents.length === 0) return result;
 
-    console.log(`[CatchUp] Checking ${agents.length} agent(s) × ${products.length} product(s)…`);
+    console.log(`[CatchUp] Checking ${agents.length} agent(s) × ${products.length} product(s), plus ${entityAgents.length} entity agent(s)…`);
 
     // Sequential by registration (module priority) order; batched per agent
     // across products with concurrency 3.
@@ -118,6 +140,56 @@ export async function runCatchUpPass(): Promise<CatchUpResult> {
             result.skipped.push({ slug: agent.slug, productId: product.id, reason: "in-flight" });
           } else {
             result.ran.push({ slug: agent.slug, productId: product.id });
+          }
+        },
+        { label: `CatchUp/${agent.slug}`, concurrency: 3 },
+      );
+    }
+
+    // Entity-scoped agents (ADR 003 §2.7): overdue check keys on
+    // (agent, entity); timeOfDay is ignored exactly as for product agents.
+    for (const agent of entityAgents) {
+      let targets: EntityAgentTarget[];
+      try {
+        targets = await agent.listTargets();
+      } catch (err) {
+        console.error(`[CatchUp] ${agent.slug} target resolution failed:`, err instanceof Error ? err.message : err);
+        continue;
+      }
+
+      const due: EntityAgentTarget[] = [];
+      for (const target of targets) {
+        if (!target.schedule.enabled) {
+          result.skipped.push({ slug: agent.slug, entityId: target.entityId, reason: "disabled" });
+          continue;
+        }
+        if (!await isEntityAgentOverdue(agent.slug, target)) {
+          result.skipped.push({ slug: agent.slug, entityId: target.entityId, reason: "not-overdue" });
+          continue;
+        }
+        if (!await passesCircuitBreakerForEntity(agent.slug, target.entityId, target.schedule, target.entityName)) {
+          result.skipped.push({ slug: agent.slug, entityId: target.entityId, reason: "circuit-breaker" });
+          continue;
+        }
+        due.push(target);
+      }
+
+      if (due.length === 0) continue;
+      console.log(`[CatchUp] ${agent.slug}: ${due.length} entity/entities overdue — running now`);
+
+      await runAgentBatch(
+        due,
+        async (target) => {
+          const outcome = await withInFlightGuard(agent.slug, target.entityId, () =>
+            trackAgentExecution(
+              { agentSlug: agent.slug, triggerType: "scheduled", entityId: target.entityId },
+              () => agent.run(target),
+            ),
+          );
+          if (outcome === null) {
+            result.skipped.push({ slug: agent.slug, entityId: target.entityId, reason: "in-flight" });
+          } else {
+            result.ran.push({ slug: agent.slug, entityId: target.entityId });
           }
         },
         { label: `CatchUp/${agent.slug}`, concurrency: 3 },

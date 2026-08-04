@@ -1,32 +1,31 @@
 /**
- * Competitors module registration (ADR 002 §7): registers the scheduled
- * agent pair — updates + features — matching the SaaS
- * schedules.competitorUpdates / schedules.competitorFeatures keys.
- * (Summary refresh folds into updates for scheduling purposes.)
+ * Competitors module registration (ADR 002 §7, refined by ADR 003 §2.7):
+ * the updates and features scans are ENTITY-scoped agents — monitoring and
+ * entity research run once per entity node with ≥1 tracked facet, however
+ * many products face it ("track Mixpanel from five products, research it
+ * once"). Facet-scoped agents (differentiators, comparisons) would register
+ * with the product-scoped kind; sprint 3a has none scheduled.
  *
- * NOTE the profile-canonical rule (module README, ADR 002 risk 1): the
- * `products.competitors` jsonb is never written by this module; ported
- * functions read `profilesToCompetitorArray()` projections instead.
+ * The registering module resolves targets + effective schedules
+ * (service.listEntityAgentTargets) so the scheduler stays domain-agnostic.
  */
-import type { Product } from "@shared/schema";
 import { AgentSlugs } from "../../lib/agents/slugs.js";
-import { computeDefaultSchedules } from "../../scheduler/defaults.js";
-import { registerScheduledAgent } from "../../scheduler/registry.js";
-import { runFeaturesScanForProduct, runUpdatesScan } from "./service.js";
+import { registerEntityScheduledAgent, type EntityAgentTarget } from "../../scheduler/registry.js";
+import { listEntityAgentTargets, runFeaturesScanForEntity, runUpdatesScanForEntity } from "./service.js";
 
 export function registerCompetitorAgents(): void {
-  registerScheduledAgent({
+  registerEntityScheduledAgent({
     slug: AgentSlugs.COMPETITOR_UPDATES,
     scheduleKey: "competitorUpdates",
-    defaultSchedule: (product: Product) => computeDefaultSchedules(product)["competitorUpdates"]!,
-    run: (product: Product) => runUpdatesScan(product.organizationId, product),
+    listTargets: () => listEntityAgentTargets("competitorUpdates"),
+    run: (target: EntityAgentTarget) => runUpdatesScanForEntity(target.organizationId, target.entityId),
   });
 
-  registerScheduledAgent({
+  registerEntityScheduledAgent({
     slug: AgentSlugs.COMPETITOR_FEATURES,
     scheduleKey: "competitorFeatures",
-    defaultSchedule: (product: Product) => computeDefaultSchedules(product)["competitorFeatures"]!,
-    run: (product: Product) => runFeaturesScanForProduct(product.organizationId, product),
+    listTargets: () => listEntityAgentTargets("competitorFeatures"),
+    run: (target: EntityAgentTarget) => runFeaturesScanForEntity(target.organizationId, target.entityId),
   });
 }
 

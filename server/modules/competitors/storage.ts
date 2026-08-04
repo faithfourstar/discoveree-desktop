@@ -1,103 +1,291 @@
 /**
- * Carved competitor storage (ADR 002 §3).
+ * Competitor storage (ADR 002 §3 conventions, reshaped by ADR 003 §2).
  *
- * Plain exported async functions whose bodies are copied verbatim from the
- * corresponding SaaS `DatabaseStorage` methods (storage.ts line refs in each
- * doc comment). Functions take organizationId/productId explicitly — never
- * import the seed constants here (only http/identity.ts and tests may).
+ * Entity + facet are jointly canonical: `competitor_entities` carries
+ * org-level identity/facts/monitoring state (researched once per org);
+ * `competitor_profiles` is the per-product facet and remains the API's stable
+ * id. Functions take organizationId/productId explicitly — never import the
+ * seed constants here (only http/identity.ts and tests may).
  *
- * `competitor_profiles` is CANONICAL on desktop (ADR 002 §3): the
- * `products.competitors` jsonb is never written by this module.
+ * The two-level hierarchy invariant (§2.9.1: a parent must itself be a root)
+ * is enforced HERE in service code, not SQL — this create function is the
+ * single choke point for entity creation.
  */
-import { and, desc, eq, gte, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import {
   competitorChanges,
+  competitorEntities,
   competitorProfiles,
   competitorThreatLevelHistory,
   type CompetitorChange,
+  type CompetitorEntity,
   type CompetitorProfile,
   type CompetitorThreatLevelHistory,
   type InsertCompetitorChange,
-  type InsertCompetitorProfile,
+  type InsertCompetitorEntity,
   type InsertCompetitorThreatLevelHistory,
 } from "@shared/schema";
 import { getDb } from "../../db/index.js";
 
-// ── Profiles ────────────────────────────────────────────────────────────────
+// drizzle's native insert types — the drizzle-zod Insert* types widen jsonb
+// columns to Json, which drizzle's typed insert/update rejects under strict tsc.
+type FacetInsert = typeof competitorProfiles.$inferInsert;
+type EntityInsert = typeof competitorEntities.$inferInsert;
 
-/** NEW (stable-ID surface, ADR 002 §6): fetch one profile by primary key. */
+/** A facet joined with its entity node (and the node's company root, if any). */
+export interface FacetWithEntity {
+  profile: CompetitorProfile;
+  entity: CompetitorEntity;
+  /** The company root when the facet points at a child node (§2.9.2 fallback source). */
+  parent: CompetitorEntity | null;
+}
+
+// ── Entities ────────────────────────────────────────────────────────────────
+
+export async function getCompetitorEntityById(id: string): Promise<CompetitorEntity | undefined> {
+  const db = getDb();
+  const [entity] = await db.select().from(competitorEntities).where(eq(competitorEntities.id, id));
+  return entity || undefined;
+}
+
+export async function getCompetitorEntitiesByOrganization(
+  organizationId: string,
+): Promise<CompetitorEntity[]> {
+  const db = getDb();
+  return db
+    .select()
+    .from(competitorEntities)
+    .where(eq(competitorEntities.organizationId, organizationId))
+    .orderBy(competitorEntities.name);
+}
+
+/**
+ * Dedup lookup by normalised name (ADR 003 §2.3 step 1). Spans BOTH tree
+ * levels — sub-brand names are stored fully qualified, so the org-wide unique
+ * index makes this a single lookup.
+ */
+export async function findCompetitorEntityByNormalizedName(
+  organizationId: string,
+  normalizedName: string,
+): Promise<CompetitorEntity | undefined> {
+  const db = getDb();
+  const [entity] = await db
+    .select()
+    .from(competitorEntities)
+    .where(and(
+      eq(competitorEntities.organizationId, organizationId),
+      eq(competitorEntities.normalizedName, normalizedName),
+    ));
+  return entity || undefined;
+}
+
+/** Dedup lookup by domain — checked BEFORE the name (ADR 003 §2.3 step 1). */
+export async function findCompetitorEntityByDomain(
+  organizationId: string,
+  domain: string,
+): Promise<CompetitorEntity | undefined> {
+  const db = getDb();
+  const [entity] = await db
+    .select()
+    .from(competitorEntities)
+    .where(and(
+      eq(competitorEntities.organizationId, organizationId),
+      eq(competitorEntities.domain, domain),
+    ))
+    .orderBy(competitorEntities.createdAt)
+    .limit(1);
+  return entity || undefined;
+}
+
+/**
+ * Create an entity node, enforcing the two-level invariant (§2.9.1): a parent
+ * must exist and must itself be a root node. Divisions-of-divisions is
+ * corporate genealogy, not competitive intelligence.
+ */
+export async function createCompetitorEntity(insert: EntityInsert): Promise<CompetitorEntity> {
+  const db = getDb();
+  if (insert.parentEntityId) {
+    const parent = await getCompetitorEntityById(insert.parentEntityId);
+    if (!parent) {
+      throw new Error("Parent competitor entity not found.");
+    }
+    if (parent.organizationId !== insert.organizationId) {
+      throw new Error("Parent competitor entity belongs to a different organisation.");
+    }
+    if (parent.parentEntityId !== null) {
+      throw new Error(
+        "Competitor hierarchies are limited to two levels: a company and its products. A product node cannot have children of its own.",
+      );
+    }
+  }
+  const [entity] = await db.insert(competitorEntities).values(insert).returning();
+  return entity!;
+}
+
+export async function updateCompetitorEntity(
+  id: string,
+  updateData: Partial<EntityInsert>,
+): Promise<CompetitorEntity> {
+  const db = getDb();
+  const [entity] = await db
+    .update(competitorEntities)
+    .set({ ...updateData, updatedAt: new Date() })
+    .where(eq(competitorEntities.id, id))
+    .returning();
+  return entity!;
+}
+
+/**
+ * "Merge, don't replace" write path for entity facts: strips fields that are
+ * null, undefined, or empty arrays so that a failed or partial agent run
+ * never wipes data that was already there (the sprint-2
+ * upsertCompetitorProfile semantics, moved to the entity where the facts now
+ * live).
+ */
+export async function mergeCompetitorEntityFacts(
+  id: string,
+  update: Partial<EntityInsert>,
+): Promise<CompetitorEntity> {
+  const safeUpdate: Record<string, unknown> = { updatedAt: new Date() };
+  for (const [key, value] of Object.entries(update)) {
+    if (value === null || value === undefined) continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    safeUpdate[key] = value;
+  }
+  const db = getDb();
+  const [entity] = await db
+    .update(competitorEntities)
+    .set(safeUpdate)
+    .where(eq(competitorEntities.id, id))
+    .returning();
+  return entity!;
+}
+
+export async function getChildCompetitorEntities(parentEntityId: string): Promise<CompetitorEntity[]> {
+  const db = getDb();
+  return db
+    .select()
+    .from(competitorEntities)
+    .where(eq(competitorEntities.parentEntityId, parentEntityId))
+    .orderBy(competitorEntities.name);
+}
+
+export async function deleteCompetitorEntitiesByIds(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const db = getDb();
+  await db.delete(competitorEntities).where(inArray(competitorEntities.id, ids));
+}
+
+/** Rename an entity node (ADR 003 §2.4: change rows are FK'd — nothing to walk). */
+export async function renameCompetitorEntity(
+  id: string,
+  name: string,
+  normalizedName: string,
+): Promise<CompetitorEntity> {
+  return updateCompetitorEntity(id, { name, normalizedName });
+}
+
+// ── Facets (competitor_profiles) ────────────────────────────────────────────
+
 export async function getCompetitorProfileById(id: string): Promise<CompetitorProfile | undefined> {
   const db = getDb();
   const [profile] = await db.select().from(competitorProfiles).where(eq(competitorProfiles.id, id));
   return profile || undefined;
 }
 
-/** storage.ts:2214 */
-export async function getCompetitorProfile(
+/** Facet-grain duplicate lookup (§2.9.2): one facet per (product, entity node). */
+export async function getCompetitorProfileByProductAndEntity(
   productId: string,
-  competitorName: string,
+  entityId: string,
 ): Promise<CompetitorProfile | undefined> {
   const db = getDb();
   const [profile] = await db
     .select()
     .from(competitorProfiles)
-    .where(
-      and(
-        eq(competitorProfiles.productId, productId),
-        eq(competitorProfiles.competitorName, competitorName),
-      ),
-    );
+    .where(and(
+      eq(competitorProfiles.productId, productId),
+      eq(competitorProfiles.entityId, entityId),
+    ));
   return profile || undefined;
 }
 
-/** storage.ts:2227 */
 export async function getCompetitorProfilesByProduct(productId: string): Promise<CompetitorProfile[]> {
   const db = getDb();
   return db
     .select()
     .from(competitorProfiles)
-    .where(eq(competitorProfiles.productId, productId))
-    .orderBy(competitorProfiles.competitorName);
+    .where(eq(competitorProfiles.productId, productId));
+}
+
+export async function getCompetitorProfilesByEntity(entityId: string): Promise<CompetitorProfile[]> {
+  const db = getDb();
+  return db
+    .select()
+    .from(competitorProfiles)
+    .where(eq(competitorProfiles.entityId, entityId));
+}
+
+export async function getCompetitorProfilesByEntities(entityIds: string[]): Promise<CompetitorProfile[]> {
+  if (entityIds.length === 0) return [];
+  const db = getDb();
+  return db
+    .select()
+    .from(competitorProfiles)
+    .where(inArray(competitorProfiles.entityId, entityIds));
 }
 
 /**
- * storage.ts:2235 — "merge, don't replace": strips fields that are null,
- * undefined, or empty arrays so that a failed or partial agent run never
- * wipes data that was already there.
+ * Facets of a product joined to their entity node (and the node's company
+ * root where one exists), ordered by entity name — the read the card list and
+ * detail views are built from (§2.5).
  */
-export async function upsertCompetitorProfile(
-  insertProfile: InsertCompetitorProfile,
-): Promise<CompetitorProfile> {
+export async function getFacetsWithEntitiesByProduct(productId: string): Promise<FacetWithEntity[]> {
   const db = getDb();
-  // Check if profile exists
-  const existing = await getCompetitorProfile(insertProfile.productId, insertProfile.competitorName);
+  const rows = await db
+    .select()
+    .from(competitorProfiles)
+    .innerJoin(competitorEntities, eq(competitorProfiles.entityId, competitorEntities.id))
+    .where(eq(competitorProfiles.productId, productId))
+    .orderBy(competitorEntities.name);
 
-  if (existing) {
-    // "Merge, don't replace": strip any fields that are null, undefined, or empty arrays
-    // so that a failed or partial agent run never wipes data that was already there.
-    const safeUpdate: Record<string, unknown> = { updatedAt: new Date() };
-    for (const [key, value] of Object.entries(insertProfile)) {
-      if (value === null || value === undefined) continue;
-      if (Array.isArray(value) && value.length === 0) continue;
-      safeUpdate[key] = value;
-    }
-    const [profile] = await db
-      .update(competitorProfiles)
-      .set(safeUpdate)
-      .where(eq(competitorProfiles.id, existing.id))
-      .returning();
-    return profile!;
-  } else {
-    // Create new profile
-    const [profile] = await db.insert(competitorProfiles).values(insertProfile).returning();
-    return profile!;
-  }
+  const parentIds = [...new Set(
+    rows.map(r => r.competitor_entities.parentEntityId).filter((v): v is string => v !== null),
+  )];
+  const parents = parentIds.length > 0
+    ? await db.select().from(competitorEntities).where(inArray(competitorEntities.id, parentIds))
+    : [];
+  const parentById = new Map(parents.map(p => [p.id, p]));
+
+  return rows.map(r => ({
+    profile: r.competitor_profiles,
+    entity: r.competitor_entities,
+    parent: r.competitor_entities.parentEntityId
+      ? parentById.get(r.competitor_entities.parentEntityId) ?? null
+      : null,
+  }));
 }
 
-/** storage.ts:2261 */
+/** One facet joined to entity + company root (detail reads). */
+export async function getFacetWithEntityById(id: string): Promise<FacetWithEntity | undefined> {
+  const profile = await getCompetitorProfileById(id);
+  if (!profile) return undefined;
+  const entity = await getCompetitorEntityById(profile.entityId);
+  if (!entity) return undefined;
+  const parent = entity.parentEntityId
+    ? (await getCompetitorEntityById(entity.parentEntityId)) ?? null
+    : null;
+  return { profile, entity, parent };
+}
+
+export async function createCompetitorFacet(insert: FacetInsert): Promise<CompetitorProfile> {
+  const db = getDb();
+  const [profile] = await db.insert(competitorProfiles).values(insert).returning();
+  return profile!;
+}
+
 export async function updateCompetitorProfile(
   id: string,
-  updateData: Partial<InsertCompetitorProfile>,
+  updateData: Partial<FacetInsert>,
 ): Promise<CompetitorProfile> {
   const db = getDb();
   const [profile] = await db
@@ -108,158 +296,151 @@ export async function updateCompetitorProfile(
   return profile!;
 }
 
-/**
- * NEW (spec 2.4 inline-rename): rename a PROPOSED competitor and carry its
- * name-keyed rows along in the SAME transaction — `competitor_changes` has no
- * profile FK, so a rename outside the transaction would orphan the draft
- * changes from the discard-purge and the changes-feed exclusion. Threat-level
- * history (also name-carrying, though profile-FK'd) is renamed for
- * consistency. The route enforces the proposed-only rule; this function just
- * performs the atomic rename.
- */
-export async function renameCompetitorProfile(
-  profileId: string,
-  productId: string,
-  oldName: string,
-  newName: string,
-): Promise<CompetitorProfile> {
-  const db = getDb();
-  return db.transaction(async (tx) => {
-    const [profile] = await tx
-      .update(competitorProfiles)
-      .set({ competitorName: newName, updatedAt: new Date() })
-      .where(eq(competitorProfiles.id, profileId))
-      .returning();
-    await tx
-      .update(competitorChanges)
-      .set({ competitorName: newName })
-      .where(and(
-        eq(competitorChanges.productId, productId),
-        eq(competitorChanges.competitorName, oldName),
-      ));
-    await tx
-      .update(competitorThreatLevelHistory)
-      .set({ competitorName: newName })
-      .where(eq(competitorThreatLevelHistory.competitorProfileId, profileId));
-    return profile!;
-  });
-}
-
-/**
- * storage.ts:2274, adapted to the stable-ID surface: the SaaS deleted by
- * (productId, competitorName); profile-canonical desktop deletes by id.
- */
 export async function deleteCompetitorProfileById(id: string): Promise<void> {
   const db = getDb();
   await db.delete(competitorProfiles).where(eq(competitorProfiles.id, id));
 }
 
-// ── Changes ─────────────────────────────────────────────────────────────────
-
-/** storage.ts:2127 */
-export async function getCompetitorChangesByProduct(
-  productId: string,
-  limit: number = 20,
-): Promise<CompetitorChange[]> {
+/** Number of facets referencing any of the given entity nodes (GC input, §2.3). */
+export async function countFacetsForEntities(entityIds: string[]): Promise<number> {
+  if (entityIds.length === 0) return 0;
   const db = getDb();
-  return db
-    .select()
-    .from(competitorChanges)
-    .where(eq(competitorChanges.productId, productId))
-    .orderBy(desc(competitorChanges.detectedAt))
-    .limit(limit);
-}
-
-/** NEW (detail view): most recent changes for a single competitor name. */
-export async function getCompetitorChangesByProductAndName(
-  productId: string,
-  competitorName: string,
-  limit: number = 20,
-): Promise<CompetitorChange[]> {
-  const db = getDb();
-  return db
-    .select()
-    .from(competitorChanges)
-    .where(and(
-      eq(competitorChanges.productId, productId),
-      eq(competitorChanges.competitorName, competitorName),
-    ))
-    .orderBy(desc(competitorChanges.detectedAt))
-    .limit(limit);
+  const [row] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(competitorProfiles)
+    .where(inArray(competitorProfiles.entityId, entityIds));
+  return Number(row?.count || 0);
 }
 
 /**
- * storage.ts:2136, verbatim body except the pagination input: the desktop API
- * (§6) is limit/offset, so `offset` is taken directly instead of being
- * computed from a page number.
+ * Entity nodes of an org carrying at least one TRACKED, non-own-product facet
+ * — the iteration set for entity-scoped agents (ADR 003 §2.7).
  */
-export async function getCompetitorChangesByProductPaginated(
-  productId: string,
-  options: { limit: number; offset: number; daysLimit?: number; competitorFilter?: string; categoryFilter?: "competitor" | "adjacent"; search?: string; excludeCompetitorNames?: string[] },
-): Promise<{ changes: CompetitorChange[]; total: number; hasMore: boolean }> {
+export async function getEntitiesWithTrackedFacets(
+  organizationId: string,
+): Promise<Array<{ entity: CompetitorEntity; trackedFacets: CompetitorProfile[] }>> {
   const db = getDb();
-  const { limit, offset, daysLimit = 30, competitorFilter, categoryFilter, search, excludeCompetitorNames } = options;
+  const rows = await db
+    .select()
+    .from(competitorProfiles)
+    .innerJoin(competitorEntities, eq(competitorProfiles.entityId, competitorEntities.id))
+    .where(and(
+      eq(competitorEntities.organizationId, organizationId),
+      eq(competitorProfiles.status, "tracked"),
+    ))
+    .orderBy(competitorEntities.name);
 
-  // Calculate date limit
+  const byEntity = new Map<string, { entity: CompetitorEntity; trackedFacets: CompetitorProfile[] }>();
+  for (const row of rows) {
+    if (row.competitor_profiles.sourceCategory === "own_product") continue;
+    const existing = byEntity.get(row.competitor_entities.id);
+    if (existing) {
+      existing.trackedFacets.push(row.competitor_profiles);
+    } else {
+      byEntity.set(row.competitor_entities.id, {
+        entity: row.competitor_entities,
+        trackedFacets: [row.competitor_profiles],
+      });
+    }
+  }
+  return [...byEntity.values()];
+}
+
+// ── Changes (entity-keyed, ADR 003 §2.4) ────────────────────────────────────
+
+/** Most recent change rows for a single entity node (detail view). */
+export async function getCompetitorChangesByEntity(
+  entityId: string,
+  limit: number = 20,
+): Promise<CompetitorChange[]> {
+  const db = getDb();
+  return db
+    .select()
+    .from(competitorChanges)
+    .where(eq(competitorChanges.entityId, entityId))
+    .orderBy(desc(competitorChanges.detectedAt))
+    .limit(limit);
+}
+
+export interface ProductChangeRow extends CompetitorChange {
+  /** Entity name resolved through the feed join (attribution). */
+  competitorName: string;
+}
+
+/**
+ * The product-relevant change feed (ADR 003 §2.4): changes of entity nodes
+ * for which this product holds a TRACKED facet. The §9 feed-exclusion rule
+ * ("never show changes for proposed competitors") is the join predicate, not
+ * a name filter. The parent-company changes join (§2.9.3) is additive,
+ * post-3a.
+ */
+export async function getCompetitorChangesForProductPaginated(
+  productId: string,
+  options: {
+    limit: number;
+    offset: number;
+    daysLimit?: number;
+    entityFilter?: string;
+    categoryFilter?: "competitor" | "adjacent";
+    search?: string;
+  },
+): Promise<{ changes: ProductChangeRow[]; total: number; hasMore: boolean }> {
+  const db = getDb();
+  const { limit, offset, daysLimit = 30, entityFilter, categoryFilter, search } = options;
+
   const dateLimit = new Date();
   dateLimit.setDate(dateLimit.getDate() - daysLimit);
 
-  // Build conditions
   const conditions = [
-    eq(competitorChanges.productId, productId),
+    eq(competitorProfiles.productId, productId),
+    eq(competitorProfiles.status, "tracked"),
     gte(competitorChanges.detectedAt, dateLimit),
   ];
 
-  // NEW (spec 2.4 gate): exclude changes belonging to proposed competitors —
-  // the feed must never surface a competitor the user has not accepted.
-  // Changes carry competitorName (no profile FK), so exclusion is by name.
-  if (excludeCompetitorNames && excludeCompetitorNames.length > 0) {
-    conditions.push(notInArray(competitorChanges.competitorName, excludeCompetitorNames));
+  if (entityFilter && entityFilter !== "all") {
+    conditions.push(eq(competitorChanges.entityId, entityFilter));
   }
 
-  // Filter by specific competitor name
-  if (competitorFilter && competitorFilter !== "all") {
-    conditions.push(eq(competitorChanges.competitorName, competitorFilter));
-  }
-
-  // Filter by category (competitor or adjacent)
+  // Classification is a facet concept (per product) — filter on the joined
+  // facet, never on the change row's observing-scan category.
   if (categoryFilter) {
-    conditions.push(eq(competitorChanges.sourceCategory, categoryFilter));
+    conditions.push(eq(competitorProfiles.sourceCategory, categoryFilter));
   }
 
-  // Add search filter for title and description
   if (search && search.trim()) {
     const searchLower = `%${search.toLowerCase().trim()}%`;
     conditions.push(
-      sql`(LOWER(${competitorChanges.changeTitle}) LIKE ${searchLower} OR LOWER(${competitorChanges.changeDescription}) LIKE ${searchLower} OR LOWER(${competitorChanges.competitorName}) LIKE ${searchLower})`,
+      sql`(LOWER(${competitorChanges.changeTitle}) LIKE ${searchLower} OR LOWER(${competitorChanges.changeDescription}) LIKE ${searchLower} OR LOWER(${competitorEntities.name}) LIKE ${searchLower})`,
     );
   }
 
-  // Get total count
   const [countResult] = await db
     .select({ count: sql<number>`count(*)` })
     .from(competitorChanges)
+    .innerJoin(competitorProfiles, eq(competitorChanges.entityId, competitorProfiles.entityId))
+    .innerJoin(competitorEntities, eq(competitorChanges.entityId, competitorEntities.id))
     .where(and(...conditions));
 
   const total = Number(countResult?.count || 0);
 
-  // Get paginated results
-  const changes = await db
+  const rows = await db
     .select()
     .from(competitorChanges)
+    .innerJoin(competitorProfiles, eq(competitorChanges.entityId, competitorProfiles.entityId))
+    .innerJoin(competitorEntities, eq(competitorChanges.entityId, competitorEntities.id))
     .where(and(...conditions))
     .orderBy(desc(competitorChanges.detectedAt))
     .limit(limit)
     .offset(offset);
 
-  return {
-    changes,
-    total,
-    hasMore: offset + changes.length < total,
-  };
+  const changes = rows.map(r => ({
+    ...r.competitor_changes,
+    competitorName: r.competitor_entities.name,
+  }));
+
+  return { changes, total, hasMore: offset + changes.length < total };
 }
 
-/** storage.ts:2195 */
 export async function createCompetitorChange(
   insertChange: InsertCompetitorChange,
 ): Promise<CompetitorChange> {
@@ -268,31 +449,15 @@ export async function createCompetitorChange(
   return change!;
 }
 
-/** storage.ts:2209 */
-export async function deleteCompetitorChangesByProduct(productId: string): Promise<void> {
+/** Delete every change row for the given entity nodes (tree GC, §2.3). */
+export async function deleteCompetitorChangesByEntities(entityIds: string[]): Promise<void> {
+  if (entityIds.length === 0) return;
   const db = getDb();
-  await db.delete(competitorChanges).where(eq(competitorChanges.productId, productId));
+  await db.delete(competitorChanges).where(inArray(competitorChanges.entityId, entityIds));
 }
 
-/**
- * NEW (spec 2.4 gate): discard the draft change rows of a proposed competitor.
- * A proposal that was never accepted leaves no history — only the
- * DELETE-proposed path may call this; tracked deletes keep their changes.
- */
-export async function deleteCompetitorChangesByProductAndName(
-  productId: string,
-  competitorName: string,
-): Promise<void> {
-  const db = getDb();
-  await db.delete(competitorChanges).where(and(
-    eq(competitorChanges.productId, productId),
-    eq(competitorChanges.competitorName, competitorName),
-  ));
-}
+// ── Threat level history (unchanged: threat is a facet concept) ─────────────
 
-// ── Threat level history ────────────────────────────────────────────────────
-
-/** storage.ts:2417 */
 export async function createCompetitorThreatLevelHistory(
   entry: InsertCompetitorThreatLevelHistory,
 ): Promise<CompetitorThreatLevelHistory> {
@@ -301,7 +466,6 @@ export async function createCompetitorThreatLevelHistory(
   return record!;
 }
 
-/** storage.ts:2422 */
 export async function getCompetitorThreatLevelHistory(
   competitorProfileId: string,
 ): Promise<CompetitorThreatLevelHistory[]> {
@@ -313,11 +477,6 @@ export async function getCompetitorThreatLevelHistory(
     .orderBy(desc(competitorThreatLevelHistory.changedAt));
 }
 
-/**
- * NEW (spec 2.4 gate): remove threat-level history for a discarded proposal —
- * pairs with deleteCompetitorChangesByProductAndName so a never-accepted
- * proposal leaves no rows behind.
- */
 export async function deleteCompetitorThreatLevelHistoryByProfile(
   competitorProfileId: string,
 ): Promise<void> {
@@ -327,7 +486,6 @@ export async function deleteCompetitorThreatLevelHistoryByProfile(
     .where(eq(competitorThreatLevelHistory.competitorProfileId, competitorProfileId));
 }
 
-/** storage.ts:2430 */
 export async function getRecentThreatLevelChangesByProduct(
   productId: string,
   daysBack: number,

@@ -1,18 +1,22 @@
 /**
- * Competitors API (ADR 002 §6). Stable-ID surface: every id is
- * `competitor_profiles.id`, org-scoped via req.ctx (never from the URL).
- * Shapes align with client/src/mock/types.ts where the mock is right;
- * two classifications only, and provenance-carrying keyDifferentiators
- * (risk 6 ruling — no invented theyBeatYouOn/youBeatThemOn data).
+ * Competitors API (ADR 002 §6, rebased by ADR 003).
  *
- * Handler logic ported from the SaaS routes.ts (line refs in ADR 002 §5),
- * rewritten against profile-canonical ids and req.ctx.
+ * Product-scoped surface under /api/products/:productId (§1.1) — the
+ * productContext middleware resolves the product; handlers read req.ctx /
+ * req.product and never call products[0]. The stable competitor id remains
+ * the FACET id (§2.5); cards carry entityId plus resolved lineage. Org-level
+ * entity reads live under /api/entities/competitors.
+ *
+ * Shapes align with client/src/mock/types.ts where the mock is right; two
+ * classifications only, and provenance-carrying keyDifferentiators (risk 6
+ * ruling — no invented theyBeatYouOn/youBeatThemOn data).
  */
-import type { Express } from "express";
+import type { Express, Request } from "express";
 import { Router } from "express";
-import type { CompetitorChange, CompetitorProfile, Product } from "@shared/schema";
+import type { CompetitorEntity, CompetitorProfile } from "@shared/schema";
 import { asyncHandler } from "../../http/asyncHandler.js";
-import { BadRequestError, ConflictError, ConflictWithPayloadError, NotFoundError } from "../../http/errors.js";
+import { ConflictWithPayloadError, NotFoundError } from "../../http/errors.js";
+import { productContext, requireProductFromRequest } from "../../http/productContext.js";
 import { getProductsByOrganization } from "../products/storage.js";
 import {
   classificationToSourceCategory,
@@ -22,11 +26,21 @@ import {
 } from "./schemas.js";
 import * as service from "./service.js";
 import * as storage from "./storage.js";
+import type { FacetWithEntity, ProductChangeRow } from "./storage.js";
 
 // ── Serialisation ───────────────────────────────────────────────────────────
 
-export interface CompetitorCard {
+export interface CompetitorCardEntityRef {
   id: string;
+  name: string;
+  /** The company root when this competitor is one of a company's sub-branded products (§2.9). */
+  parent: { id: string; name: string } | null;
+}
+
+export interface CompetitorCard {
+  /** The FACET id — the stable competitor id on this surface (§2.5). */
+  id: string;
+  entityId: string;
   name: string;
   /** Lifecycle (spec 2.4 review-before-save gate): proposed rows await accept. */
   status: "proposed" | "tracked";
@@ -38,33 +52,69 @@ export interface CompetitorCard {
   lastVerifiedAt: string | null;
   sentiment: number | null;
   reviewCount: number | null;
+  entity: CompetitorCardEntityRef;
+  /**
+   * Products (other than this one) holding a TRACKED facet on the same entity
+   * node — the adoption signal ("Already researched for [Product A]") and the
+   * cross-product "also tracked by …" link (§2.5). Client contract field.
+   */
+  alsoTrackedBy: Array<{ productId: string; productName: string }>;
 }
 
-function domainFromUrl(url: string | null | undefined): string | null {
-  if (!url) return null;
-  try {
-    return new URL(url.startsWith("http") ? url : `https://${url}`).hostname.replace(/^www\./, "");
-  } catch {
-    return null;
-  }
-}
-
-export function toCompetitorCard(profile: CompetitorProfile): CompetitorCard {
+export function toCompetitorCard(
+  joined: FacetWithEntity,
+  alsoTrackedBy: Array<{ productId: string; productName: string }> = [],
+): CompetitorCard {
+  const { profile, entity, parent } = joined;
+  // Child→root fact fallback (§2.9.2): a child node inherits company facts it
+  // doesn't carry itself.
+  const facts = service.entityFactsWithFallback(entity, parent);
   return {
     id: profile.id,
-    name: profile.competitorName,
+    entityId: entity.id,
+    name: entity.name,
     status: profile.status === "proposed" ? "proposed" : "tracked",
     classification: sourceCategoryToClassification(profile.sourceCategory),
-    domain: domainFromUrl(profile.competitorUrl),
-    summary: profile.description ?? null,
+    domain: facts.domain ?? service.extractDomain(facts.url),
+    summary: facts.description ?? null,
     threatLevel: (profile.threatLevel ?? "none") as CompetitorCard["threatLevel"],
     enrichmentStatus: (profile.enrichmentStatus ?? "pending") as CompetitorCard["enrichmentStatus"],
     // ISO only — the client renders "verified 2h ago"; never format dates server-side.
     lastVerifiedAt: profile.lastEnrichedAt ? new Date(profile.lastEnrichedAt).toISOString() : null,
     // Null until the reviews sprint — the client block stays unrendered (§6).
     sentiment: null,
-    reviewCount: profile.reviewTotalCount ?? null,
+    reviewCount: facts.reviewTotalCount ?? null,
+    entity: {
+      id: entity.id,
+      name: entity.name,
+      parent: parent ? { id: parent.id, name: parent.name } : null,
+    },
+    alsoTrackedBy,
   };
+}
+
+/**
+ * Batch-resolve the alsoTrackedBy contract field: for each entity, the OTHER
+ * products of the org holding a tracked facet on it.
+ */
+async function alsoTrackedByForEntities(
+  organizationId: string,
+  entityIds: string[],
+  excludeProductId: string,
+): Promise<Map<string, Array<{ productId: string; productName: string }>>> {
+  const map = new Map<string, Array<{ productId: string; productName: string }>>();
+  if (entityIds.length === 0) return map;
+  const facets = await storage.getCompetitorProfilesByEntities(entityIds);
+  const products = await getProductsByOrganization(organizationId);
+  const productNames = new Map(products.map(p => [p.id, p.name]));
+  for (const facet of facets) {
+    if (facet.productId === excludeProductId) continue;
+    if (facet.status !== "tracked") continue;
+    const list = map.get(facet.entityId) ?? [];
+    list.push({ productId: facet.productId, productName: productNames.get(facet.productId) ?? "" });
+    map.set(facet.entityId, list);
+  }
+  return map;
 }
 
 /**
@@ -87,16 +137,20 @@ export function resolveCitationUrl(
   return fallback;
 }
 
-function toChange(change: CompetitorChange): {
+interface ChangeView {
   id: string;
+  entityId: string;
   changeType: string;
   title: string;
   description: string;
   sourceUrl: string | null;
   detectedAt: string;
-} {
+}
+
+function toChange(change: { id: string; entityId: string; changeType: string; changeTitle: string; changeDescription: string | null; sourceUrl: string | null; detectedAt: Date | null }): ChangeView {
   return {
     id: change.id,
+    entityId: change.entityId,
     changeType: change.changeType,
     title: change.changeTitle,
     description: change.changeDescription ?? "",
@@ -105,95 +159,75 @@ function toChange(change: CompetitorChange): {
   };
 }
 
-// ── Product scoping helpers ─────────────────────────────────────────────────
+// ── Scoping helpers ─────────────────────────────────────────────────────────
 
-async function findProduct(organizationId: string): Promise<Product | undefined> {
-  const products = await getProductsByOrganization(organizationId);
-  return products[0];
-}
-
-async function requireProduct(organizationId: string): Promise<Product> {
-  const product = await findProduct(organizationId);
-  if (!product) {
-    throw new ConflictError("No product profile exists yet. Set up your product before adding competitors.");
-  }
-  return product;
-}
-
-async function requireProfile(organizationId: string, id: string): Promise<{ product: Product; profile: CompetitorProfile }> {
-  const product = await requireProduct(organizationId);
-  const profile = await storage.getCompetitorProfileById(id);
-  if (!profile || profile.productId !== product.id) {
+async function requireFacet(req: Request, id: string): Promise<FacetWithEntity> {
+  const product = requireProductFromRequest(req);
+  const joined = await storage.getFacetWithEntityById(id);
+  if (!joined || joined.profile.productId !== product.id) {
     throw new NotFoundError("Competitor not found");
   }
-  return { product, profile };
+  return joined;
 }
 
-// ── Routes ──────────────────────────────────────────────────────────────────
+// ── Product-scoped routes (/api/products/:productId/...) ────────────────────
 
 export function registerCompetitorRoutes(app: Express): void {
-  const router = Router();
+  const router = Router({ mergeParams: true });
 
-  // GET /api/competitors → { competitors: CompetitorCard[] }
+  // GET .../competitors → { competitors: CompetitorCard[] }
   // Tracked rows only by default; ?include=proposed adds proposed rows (each
   // card carries its status so the client can distinguish) — spec 2.4 gate.
   router.get("/competitors", asyncHandler(async (req, res) => {
-    const product = await findProduct(req.ctx.organizationId);
-    if (!product) {
-      res.json({ competitors: [] });
-      return;
-    }
+    const product = requireProductFromRequest(req);
     const includeProposed = String(req.query["include"] ?? "")
       .split(",")
       .map(v => v.trim())
       .includes("proposed");
-    const profiles = await storage.getCompetitorProfilesByProduct(product.id);
-    const visible = profiles
-      .filter(p => p.sourceCategory !== "own_product")
-      .filter(p => includeProposed || p.status !== "proposed");
-    res.json({ competitors: visible.map(toCompetitorCard) });
+    const joined = await storage.getFacetsWithEntitiesByProduct(product.id);
+    const visible = joined
+      .filter(j => j.profile.sourceCategory !== "own_product")
+      .filter(j => includeProposed || j.profile.status !== "proposed");
+    const alsoTracked = await alsoTrackedByForEntities(
+      req.ctx.organizationId,
+      visible.map(j => j.entity.id),
+      product.id,
+    );
+    res.json({
+      competitors: visible.map(j => toCompetitorCard(j, alsoTracked.get(j.entity.id) ?? [])),
+    });
   }));
 
-  // POST /api/competitors → 201 { competitor } (enrichment starts in background)
+  // POST .../competitors → 201 { competitor, adopted }
+  // The dedup/adoption flow (§2.3): an entity that already exists in the org
+  // is ADOPTED — the proposal card renders its researched profile instantly
+  // and only facet-scoped enrichment runs. A new name creates entity + facet;
+  // both enrichment scopes run in the background.
   router.post("/competitors", asyncHandler(async (req, res) => {
     const body = createCompetitorBodySchema.parse(req.body);
-    const product = await requireProduct(req.ctx.organizationId);
+    const product = requireProductFromRequest(req);
 
-    // Duplicate name (case-insensitive) → 409 (replaces the SaaS 400)
-    const existing = await storage.getCompetitorProfilesByProduct(product.id);
-    const isDuplicate = existing.some(
-      p => p.competitorName.toLowerCase() === body.name.toLowerCase(),
-    );
-    if (isDuplicate) {
-      throw new ConflictError("A competitor with this name already exists.");
-    }
-
-    // Created as a PROPOSAL (spec 2.4): nothing is tracked until the human
-    // accepts via POST /:id/accept. Enrichment still runs so the proposal
-    // card can show the drafted profile.
-    const profile = await storage.upsertCompetitorProfile({
-      productId: product.id,
-      competitorName: body.name,
-      competitorUrl: body.url || null,
-      competitorUrlSource: body.url ? "manual" : "ai-discovered",
-      sourceCategory: classificationToSourceCategory(body.classification),
-      enrichmentStatus: "pending",
-      status: "proposed",
+    const { profile, entity, adopted } = await service.addCompetitor(req.ctx.organizationId, product, {
+      name: body.name,
+      url: body.url,
+      classification: body.classification,
     });
 
-    // Enrichment (summary → features) starts in the background.
-    void service.startEnrichment(req.ctx.organizationId, product, profile.id);
+    void service.startEnrichment(req.ctx.organizationId, product, profile.id, { facetOnly: adopted });
 
-    res.status(201).json({ competitor: toCompetitorCard(profile) });
+    const parent = entity.parentEntityId
+      ? (await storage.getCompetitorEntityById(entity.parentEntityId)) ?? null
+      : null;
+    const alsoTracked = await alsoTrackedByForEntities(req.ctx.organizationId, [entity.id], product.id);
+    res.status(201).json({
+      competitor: toCompetitorCard({ profile, entity, parent }, alsoTracked.get(entity.id) ?? []),
+      adopted,
+    });
   }));
 
-  // GET /api/competitors/runs/active — must register before /competitors/:id
+  // GET .../competitors/runs/active — must register before /competitors/:id
   router.get("/competitors/runs/active", asyncHandler(async (req, res) => {
-    const product = await findProduct(req.ctx.organizationId);
-    if (!product) {
-      res.json({ active: false });
-      return;
-    }
+    const product = requireProductFromRequest(req);
     const active = await service.findActiveExecutionForCompetitor(product.id);
     if (!active) {
       res.json({ active: false });
@@ -201,8 +235,14 @@ export function registerCompetitorRoutes(app: Express): void {
     }
     let competitorId: string | null = null;
     if (active.competitorName) {
-      const profile = await storage.getCompetitorProfile(product.id, active.competitorName);
-      competitorId = profile?.id ?? null;
+      const entity = await storage.findCompetitorEntityByNormalizedName(
+        req.ctx.organizationId,
+        service.normalizeCompetitorName(active.competitorName),
+      );
+      if (entity) {
+        const profile = await storage.getCompetitorProfileByProductAndEntity(product.id, entity.id);
+        competitorId = profile?.id ?? null;
+      }
     }
     res.json({
       active: true,
@@ -213,34 +253,38 @@ export function registerCompetitorRoutes(app: Express): void {
     });
   }));
 
-  // GET /api/competitors/:id → card + provenance detail + recent changes
+  // GET .../competitors/:id → card + provenance detail + recent changes
   router.get("/competitors/:id", asyncHandler(async (req, res) => {
-    const { product, profile } = await requireProfile(req.ctx.organizationId, req.params["id"]!);
+    const product = requireProductFromRequest(req);
+    const joined = await requireFacet(req, req.params["id"]!);
+    const { profile, entity, parent } = joined;
+    const facts = service.entityFactsWithFallback(entity, parent);
+    const alsoTracked = await alsoTrackedByForEntities(req.ctx.organizationId, [entity.id], product.id);
 
-    const citations = (profile.summaryCitations as string[] | null) ?? null;
-    const summarySourceUrl = profile.descriptionSourceUrl || null;
+    const citations = (facts.summaryCitations as string[] | null) ?? null;
+    const summarySourceUrl = facts.descriptionSourceUrl || null;
 
     const keyDifferentiators = ((profile.keyDifferentiators as string[] | null) ?? []).map(text => ({
       text,
       sourceUrl: resolveCitationUrl(text, citations, summarySourceUrl),
     }));
 
-    const keyFeatures = ((profile.keyFeatures as Array<{ feature?: string; name?: string; sourceUrl?: string | null }> | null) ?? [])
+    const keyFeatures = ((facts.keyFeatures as Array<{ feature?: string; name?: string; sourceUrl?: string | null }> | null) ?? [])
       .map(f => ({
         feature: f.feature || f.name || "",
         sourceUrl: f.sourceUrl ?? null,
       }))
       .filter(f => f.feature);
 
-    const markets = ((profile.markets as Array<{ market?: string; sourceUrl?: string | null }> | null) ?? [])
+    const markets = ((facts.markets as Array<{ market?: string; sourceUrl?: string | null }> | null) ?? [])
       .map(m => ({ market: m.market || "", sourceUrl: m.sourceUrl ?? null }))
       .filter(m => m.market);
 
-    const changes = await storage.getCompetitorChangesByProductAndName(product.id, profile.competitorName, 20);
+    const changes = await storage.getCompetitorChangesByEntity(entity.id, 20);
 
     res.json({
       competitor: {
-        ...toCompetitorCard(profile),
+        ...toCompetitorCard(joined, alsoTracked.get(entity.id) ?? []),
         keyDifferentiators,
         keyFeatures,
         markets,
@@ -253,11 +297,12 @@ export function registerCompetitorRoutes(app: Express): void {
     });
   }));
 
-  // POST /api/competitors/:id/refresh → 202 { runId } | 409 { error, activeRun }
+  // POST .../competitors/:id/refresh → 202 { runId } | 409 { error, activeRun }
   router.post("/competitors/:id/refresh", asyncHandler(async (req, res) => {
-    const { product, profile } = await requireProfile(req.ctx.organizationId, req.params["id"]!);
+    const product = requireProductFromRequest(req);
+    const { profile, entity } = await requireFacet(req, req.params["id"]!);
 
-    const activeRun = await service.findActiveExecutionForCompetitor(product.id, profile.competitorName);
+    const activeRun = await service.findActiveExecutionForCompetitor(product.id, entity.name);
     if (activeRun) {
       throw new ConflictWithPayloadError(
         "A refresh is already running for this competitor.",
@@ -269,83 +314,60 @@ export function registerCompetitorRoutes(app: Express): void {
     res.status(202).json({ runId });
   }));
 
-  // POST /api/competitors/:id/accept → 200 { competitor } — spec 2.4 accept.
+  // POST .../competitors/:id/accept → 200 { competitor } — spec 2.4 accept.
   // Flips proposed → tracked. Succeeds regardless of enrichmentStatus (a
   // failed enrichment is the save-unverified path); accepting an
   // already-tracked competitor is a no-op 200.
   router.post("/competitors/:id/accept", asyncHandler(async (req, res) => {
-    const { profile } = await requireProfile(req.ctx.organizationId, req.params["id"]!);
-    if (profile.status === "proposed") {
-      const updated = await storage.updateCompetitorProfile(profile.id, { status: "tracked" });
-      res.json({ competitor: toCompetitorCard(updated) });
+    const product = requireProductFromRequest(req);
+    const joined = await requireFacet(req, req.params["id"]!);
+    const alsoTracked = await alsoTrackedByForEntities(req.ctx.organizationId, [joined.entity.id], product.id);
+    const also = alsoTracked.get(joined.entity.id) ?? [];
+    if (joined.profile.status === "proposed") {
+      const updated = await storage.updateCompetitorProfile(joined.profile.id, { status: "tracked" });
+      res.json({ competitor: toCompetitorCard({ ...joined, profile: updated }, also) });
       return;
     }
-    res.json({ competitor: toCompetitorCard(profile) });
+    res.json({ competitor: toCompetitorCard(joined, also) });
   }));
 
-  // DELETE /api/competitors/:id → 204
+  // DELETE .../competitors/:id → 204
+  // Facet delete + tree-aware entity GC (§2.3): the last facet on a tree
+  // takes the tree and its change rows with it — for a discarded proposal
+  // this is "a proposal that was never accepted leaves no history"; when
+  // other facets exist anywhere on the tree, only this facet goes.
   router.delete("/competitors/:id", asyncHandler(async (req, res) => {
-    const { product, profile } = await requireProfile(req.ctx.organizationId, req.params["id"]!);
-    if (profile.status === "proposed") {
-      // Discarding a proposal removes it completely (spec 2.4): a proposal
-      // that was never accepted leaves no history — draft change rows and any
-      // threat-level history go with the row.
-      await storage.deleteCompetitorChangesByProductAndName(product.id, profile.competitorName);
-      await storage.deleteCompetitorThreatLevelHistoryByProfile(profile.id);
-      await storage.deleteCompetitorProfileById(profile.id);
-      res.status(204).end();
-      return;
-    }
-    await storage.deleteCompetitorProfileById(profile.id);
-    // Change rows are kept for TRACKED competitors: they are observed history,
-    // and the feed carries the competitor name for attribution.
+    const { profile } = await requireFacet(req, req.params["id"]!);
+    await service.deleteFacetWithGc(profile);
     res.status(204).end();
   }));
 
-  // PATCH /api/competitors/:id { name?, classification?, threatLevel?, url? }
+  // PATCH .../competitors/:id { name?, classification?, threatLevel?, url? }
   router.patch("/competitors/:id", asyncHandler(async (req, res) => {
     const body = patchCompetitorBodySchema.parse(req.body);
-    const found = await requireProfile(req.ctx.organizationId, req.params["id"]!);
-    const product = found.product;
-    let profile = found.profile;
+    const product = requireProductFromRequest(req);
+    const found = await requireFacet(req, req.params["id"]!);
+    let { profile, entity } = found;
 
-    // Inline-rename (spec 2.4 proposal card) — allowed ONLY while proposed.
-    // Tracked renames are deferred: change history is name-keyed (§9 addendum),
-    // so renaming a tracked competitor would orphan its observed history.
-    if (body.name !== undefined) {
-      if (profile.status !== "proposed") {
-        throw new BadRequestError(
-          "Renaming is only available while a competitor is still proposed. Tracked competitors cannot be renamed yet.",
-        );
-      }
-      if (body.name !== profile.competitorName) {
-        // Collision rules match POST: case-insensitive, 409, excluding self.
-        const siblings = await storage.getCompetitorProfilesByProduct(product.id);
-        const collides = siblings.some(
-          p => p.id !== profile.id && p.competitorName.toLowerCase() === body.name!.toLowerCase(),
-        );
-        if (collides) {
-          throw new ConflictError("A competitor with this name already exists.");
-        }
-        // Transactional: the draft change rows (name-keyed, no profile FK)
-        // must follow the rename or the discard-purge and feed exclusion break.
-        profile = await storage.renameCompetitorProfile(
-          profile.id,
-          product.id,
-          profile.competitorName,
-          body.name,
-        );
-      }
+    // Rename is an ENTITY-row update (§2.4): change history is FK'd, so the
+    // sprint-2 "tracked competitors cannot be renamed" restriction is lifted.
+    // Collision rule is org-wide (the entity dedup key), 409 like POST.
+    if (body.name !== undefined && body.name !== entity.name) {
+      entity = await service.renameCompetitor(req.ctx.organizationId, entity, body.name);
+    }
+
+    // url is an entity fact (identity); classification/threat are facet data.
+    if (body.url !== undefined) {
+      entity = await storage.updateCompetitorEntity(entity.id, {
+        url: body.url,
+        urlSource: "manual",
+        domain: service.extractDomain(body.url),
+      });
     }
 
     const update: Record<string, unknown> = {};
-
     if (body.classification !== undefined) {
       update["sourceCategory"] = classificationToSourceCategory(body.classification);
-    }
-    if (body.url !== undefined) {
-      update["competitorUrl"] = body.url;
-      update["competitorUrlSource"] = "manual";
     }
 
     if (body.threatLevel !== undefined) {
@@ -356,40 +378,144 @@ export function registerCompetitorRoutes(app: Express): void {
         await storage.createCompetitorThreatLevelHistory({
           productId: product.id,
           competitorProfileId: profile.id,
-          competitorName: profile.competitorName,
+          competitorName: entity.name,
           previousLevel,
           newLevel: body.threatLevel,
         });
       }
     }
 
-    const updated = await storage.updateCompetitorProfile(profile.id, update);
-    res.json({ competitor: toCompetitorCard(updated) });
+    const updated = Object.keys(update).length > 0
+      ? await storage.updateCompetitorProfile(profile.id, update)
+      : profile;
+    const alsoTracked = await alsoTrackedByForEntities(req.ctx.organizationId, [entity.id], product.id);
+    res.json({
+      competitor: toCompetitorCard(
+        { profile: updated, entity, parent: found.parent },
+        alsoTracked.get(entity.id) ?? [],
+      ),
+    });
   }));
 
-  // GET /api/changes?limit&offset — product-wide change feed
+  // GET .../changes?limit&offset — product-relevant change feed (§2.4): a
+  // join over the product's TRACKED facets. Proposed competitors are excluded
+  // by the join predicate, not a name filter.
   router.get("/changes", asyncHandler(async (req, res) => {
-    const product = await findProduct(req.ctx.organizationId);
-    if (!product) {
-      res.json({ changes: [], total: 0 });
-      return;
-    }
+    const product = requireProductFromRequest(req);
     const limit = Math.min(Math.max(parseInt(String(req.query["limit"] ?? "20"), 10) || 20, 1), 100);
     const offset = Math.max(parseInt(String(req.query["offset"] ?? "0"), 10) || 0, 0);
     const daysLimit = parseInt(String(req.query["days"] ?? "30"), 10) || 30;
 
-    // The feed must never include changes from proposed competitors (spec 2.4
-    // gate) — their draft changes stay on the proposal card (GET /:id) only.
-    const profiles = await storage.getCompetitorProfilesByProduct(product.id);
-    const proposedNames = profiles.filter(p => p.status === "proposed").map(p => p.competitorName);
-
-    const result = await storage.getCompetitorChangesByProductPaginated(product.id, {
+    const result = await storage.getCompetitorChangesForProductPaginated(product.id, {
       limit,
       offset,
       daysLimit,
-      excludeCompetitorNames: proposedNames,
     });
-    res.json({ changes: result.changes.map(toChange), total: result.total });
+    res.json({
+      changes: result.changes.map((c: ProductChangeRow) => ({ ...toChange(c), competitorName: c.competitorName })),
+      total: result.total,
+    });
+  }));
+
+  app.use("/api/products/:productId", productContext, router);
+
+  registerEntityRoutes(app);
+}
+
+// ── Org-level entity routes (/api/entities/competitors, §1.1/§2.5) ──────────
+
+interface EntityView {
+  id: string;
+  name: string;
+  parentEntityId: string | null;
+  url: string | null;
+  domain: string | null;
+  description: string | null;
+  enrichmentStatus: string | null;
+  lastEnrichedAt: string | null;
+  /** Which products hold facets on this node ("also tracked by …"). */
+  facets: Array<{
+    id: string;
+    productId: string;
+    productName: string | null;
+    status: string;
+    classification: "DIRECT" | "ADJACENT";
+    threatLevel: string | null;
+  }>;
+}
+
+function toEntityView(
+  entity: CompetitorEntity,
+  facets: CompetitorProfile[],
+  productNames: Map<string, string>,
+): EntityView {
+  return {
+    id: entity.id,
+    name: entity.name,
+    parentEntityId: entity.parentEntityId ?? null,
+    url: entity.url ?? null,
+    domain: entity.domain ?? null,
+    description: entity.description ?? null,
+    enrichmentStatus: entity.enrichmentStatus ?? null,
+    lastEnrichedAt: entity.lastEnrichedAt ? new Date(entity.lastEnrichedAt).toISOString() : null,
+    facets: facets.map(f => ({
+      id: f.id,
+      productId: f.productId,
+      productName: productNames.get(f.productId) ?? null,
+      status: f.status,
+      classification: sourceCategoryToClassification(f.sourceCategory),
+      threatLevel: f.threatLevel ?? null,
+    })),
+  };
+}
+
+function registerEntityRoutes(app: Express): void {
+  const router = Router();
+
+  // GET /api/entities/competitors → org-level canonical entity list with
+  // per-product facet attribution ("which products track X").
+  router.get("/entities/competitors", asyncHandler(async (req, res) => {
+    const entities = await storage.getCompetitorEntitiesByOrganization(req.ctx.organizationId);
+    const facets = await storage.getCompetitorProfilesByEntities(entities.map(e => e.id));
+    const products = await getProductsByOrganization(req.ctx.organizationId);
+    const productNames = new Map(products.map(p => [p.id, p.name]));
+
+    const facetsByEntity = new Map<string, CompetitorProfile[]>();
+    for (const facet of facets) {
+      const list = facetsByEntity.get(facet.entityId) ?? [];
+      list.push(facet);
+      facetsByEntity.set(facet.entityId, list);
+    }
+
+    res.json({
+      entities: entities.map(e => toEntityView(e, facetsByEntity.get(e.id) ?? [], productNames)),
+    });
+  }));
+
+  // GET /api/entities/competitors/:entityId → full entity facts + facets +
+  // child nodes (for company roots).
+  router.get("/entities/competitors/:entityId", asyncHandler(async (req, res) => {
+    const entity = await storage.getCompetitorEntityById(req.params["entityId"]!);
+    if (!entity || entity.organizationId !== req.ctx.organizationId) {
+      throw new NotFoundError("Competitor entity not found");
+    }
+    const facets = await storage.getCompetitorProfilesByEntity(entity.id);
+    const children = entity.parentEntityId ? [] : await storage.getChildCompetitorEntities(entity.id);
+    const products = await getProductsByOrganization(req.ctx.organizationId);
+    const productNames = new Map(products.map(p => [p.id, p.name]));
+
+    res.json({
+      entity: {
+        ...toEntityView(entity, facets, productNames),
+        keyFeatures: entity.keyFeatures ?? null,
+        markets: entity.markets ?? null,
+        summaryCitations: entity.summaryCitations ?? null,
+        descriptionSourceUrl: entity.descriptionSourceUrl ?? null,
+      },
+      children: await Promise.all(children.map(async child =>
+        toEntityView(child, await storage.getCompetitorProfilesByEntity(child.id), productNames),
+      )),
+    });
   }));
 
   app.use("/api", router);

@@ -1,9 +1,14 @@
 /**
- * Competitors API against in-memory PGlite with the seeded local org.
+ * Competitors API against in-memory PGlite with the seeded local org, on the
+ * ADR 003 surface: /api/products/:productId/... product scoping, org-level
+ * canonical entities with per-product facets, the adoption/dedup flow, the
+ * tree-aware discard GC, and the entity-keyed change feed join.
+ *
  * The LLM router and web-fetch modules are mocked (no live API calls) so the
  * FULL slice runs: add → background enrichment (summary → features, Zod →
- * merge-don't-replace) → provenance-stored profile → serve → refresh detects
- * change (updates scan → competitor_changes).
+ * merge-don't-replace, split at the entity/facet seam) → provenance-stored
+ * profile → serve → refresh detects change (entity-scoped updates scan →
+ * competitor_changes).
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import request from "supertest";
@@ -59,6 +64,8 @@ vi.mock("../../../lib/llm/router.js", () => ({
       }),
     };
   }),
+  // Settings-only export pulled in via the app graph.
+  clearLlmClientCaches: vi.fn(),
 }));
 
 vi.mock("../../../lib/web/fetch.js", () => ({
@@ -75,12 +82,16 @@ import { LOCAL_ORGANIZATION_ID } from "../../../db/seedLocal.js";
 import { seedAgents } from "../../../lib/agents/seed.js";
 import { createAiAgentExecution, updateAiAgentExecution } from "../../../lib/agents/executions.js";
 import { getAiAgentBySlug } from "../../../lib/agents/registry.js";
-import type { Product } from "@shared/schema";
-import { runFeaturesScanForProduct, runUpdatesScan, settleBackgroundTasks } from "../service.js";
+import { listEntityAgentTargets, settleBackgroundTasks } from "../service.js";
 import * as storage from "../storage.js";
 
 let app: Express;
-let competitorId: string;
+let productId: string;
+let productBId: string;
+let competitorId: string; // Acme's facet on product A
+let acmeEntityId: string;
+
+const api = (pid: string) => `/api/products/${pid}`;
 
 beforeAll(async () => {
   await initDatabase({ target: "pglite", dataDir: "memory://" });
@@ -93,45 +104,69 @@ afterAll(async () => {
   await closeDatabase();
 });
 
-describe("Competitors API (stable-ID surface, §6)", () => {
-  it("GET /api/competitors before any product exists → empty list", async () => {
-    const res = await request(app).get("/api/competitors");
+describe("Products collection (ADR 003 §1.1 — the products[0] convention is deleted)", () => {
+  it("GET /api/products before onboarding → empty collection", async () => {
+    const res = await request(app).get("/api/products");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ products: [] });
+  });
+
+  it("competitor routes under an unknown product id → 404, never a fallback product", async () => {
+    const res = await request(app)
+      .get("/api/products/00000000-0000-4000-8000-000000000099/competitors");
+    expect(res.status).toBe(404);
+    expect(res.body.error).toMatch(/product not found/i);
+  });
+
+  it("POST /api/products creates a product; GET detail and PATCH work", async () => {
+    const res = await request(app)
+      .post("/api/products")
+      .send({ name: "Our Product", url: "https://ourproduct.example", description: "A context layer." });
+    expect(res.status).toBe(201);
+    expect(res.body.product.name).toBe("Our Product");
+    expect(res.body.product.slug).toBe("our-product");
+    productId = res.body.product.id;
+
+    const list = await request(app).get("/api/products");
+    expect(list.body.products).toHaveLength(1);
+
+    const detail = await request(app).get(`/api/products/${productId}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.product.id).toBe(productId);
+
+    const patched = await request(app)
+      .patch(`/api/products/${productId}`)
+      .send({ description: "A local, agent-maintained context layer." });
+    expect(patched.status).toBe(200);
+    expect(patched.body.product.description).toBe("A local, agent-maintained context layer.");
+  });
+
+  it("POST /api/products without a name → 400", async () => {
+    const res = await request(app).post("/api/products").send({ url: "https://x.example" });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("Competitors API (facet-id surface under the product path, §2.5)", () => {
+  it("GET .../competitors on a fresh product → empty list", async () => {
+    const res = await request(app).get(`${api(productId)}/competitors`);
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ competitors: [] });
   });
 
-  it("POST /api/competitors before a product exists → 409 with a clear message", async () => {
-    const res = await request(app)
-      .post("/api/competitors")
-      .send({ name: "Acme", classification: "DIRECT" });
-    expect(res.status).toBe(409);
-    expect(res.body.error).toMatch(/product profile/i);
-  });
-
-  it("PATCH /api/product creates the product row", async () => {
-    const res = await request(app)
-      .patch("/api/product")
-      .send({ name: "Our Product", url: "https://ourproduct.example", description: "A context layer." });
-    expect(res.status).toBe(201);
-    expect(res.body.product.name).toBe("Our Product");
-
-    const get = await request(app).get("/api/product");
-    expect(get.status).toBe(200);
-    expect(get.body.product.id).toBe(res.body.product.id);
-  });
-
-  it("POST /api/competitors with an invalid body → 400 with Zod issues", async () => {
-    const res = await request(app).post("/api/competitors").send({ name: "", classification: "WRONG" });
+  it("POST .../competitors with an invalid body → 400 with Zod issues", async () => {
+    const res = await request(app).post(`${api(productId)}/competitors`).send({ name: "", classification: "WRONG" });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("Validation failed");
     expect(Array.isArray(res.body.issues)).toBe(true);
   });
 
-  it("POST /api/competitors → 201 PROPOSED card; profile row is canonical", async () => {
+  it("POST .../competitors → 201 PROPOSED card carrying entityId + lineage; a new entity is a root node", async () => {
     const res = await request(app)
-      .post("/api/competitors")
+      .post(`${api(productId)}/competitors`)
       .send({ name: "Acme", url: "https://acme.example", classification: "DIRECT" });
     expect(res.status).toBe(201);
+    expect(res.body.adopted).toBe(false);
     const card = res.body.competitor;
     expect(card.id).toMatch(/[0-9a-f-]{36}/);
     expect(card).toMatchObject({
@@ -139,24 +174,29 @@ describe("Competitors API (stable-ID surface, §6)", () => {
       status: "proposed", // spec 2.4: nothing is tracked until the human accepts
       classification: "DIRECT",
       domain: "acme.example",
+      alsoTrackedBy: [],
     });
-    // Created pending; enrichment runs in the background
+    expect(card.entityId).toMatch(/[0-9a-f-]{36}/);
+    // Company-grain default (§2.9.4): every add creates a root node until the
+    // resolution agent ships.
+    expect(card.entity).toEqual({ id: card.entityId, name: "Acme", parent: null });
     expect(["pending", "enriching", "completed"]).toContain(card.enrichmentStatus);
     competitorId = card.id;
+    acmeEntityId = card.entityId;
   });
 
-  it("POST a duplicate name (case-insensitive) → 409", async () => {
+  it("POST a duplicate name (case-insensitive, normalised) → 409", async () => {
     const res = await request(app)
-      .post("/api/competitors")
+      .post(`${api(productId)}/competitors`)
       .send({ name: "ACME", classification: "ADJACENT" });
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/already exists/i);
   });
 
-  it("background enrichment completes: summary + features stored with provenance, merge-don't-replace", async () => {
+  it("background enrichment completes: entity facts + facet differentiators stored with provenance", async () => {
     await settleBackgroundTasks();
 
-    const res = await request(app).get(`/api/competitors/${competitorId}`);
+    const res = await request(app).get(`${api(productId)}/competitors/${competitorId}`);
     expect(res.status).toBe(200);
     const { competitor, changes, openThread, filedThreads } = res.body;
 
@@ -182,10 +222,20 @@ describe("Competitors API (stable-ID surface, §6)", () => {
       { market: "United States", sourceUrl: "https://acme.example/about" },
     ]);
 
-    // Feature discovery is evidence-cited in the change feed
+    // The entity/facet split held: facts landed on the entity, the
+    // differentiators on the facet.
+    const entity = await storage.getCompetitorEntityById(acmeEntityId);
+    expect(entity!.description).toMatch(/project management tool/);
+    expect((entity!.keyFeatures as unknown[]).length).toBe(2);
+    expect(entity!.enrichmentStatus).toBe("completed");
+    const facet = await storage.getCompetitorProfileById(competitorId);
+    expect((facet!.keyDifferentiators as string[]).length).toBe(2);
+
+    // Feature discovery is evidence-cited in the change feed, keyed to the entity
     expect(changes.length).toBeGreaterThanOrEqual(1);
     expect(changes[0]).toHaveProperty("sourceUrl");
     expect(changes[0]).toHaveProperty("detectedAt");
+    expect(changes[0].entityId).toBe(acmeEntityId);
 
     // Thread shape reserved for the strategy sprint
     expect(openThread).toBeNull();
@@ -193,12 +243,11 @@ describe("Competitors API (stable-ID surface, §6)", () => {
   });
 
   it("proposed rows are hidden from the default list but returned by ?include=proposed (with status)", async () => {
-    // Still proposed at this point — the default list must not show it
-    const defaultList = await request(app).get("/api/competitors");
+    const defaultList = await request(app).get(`${api(productId)}/competitors`);
     expect(defaultList.status).toBe(200);
     expect(defaultList.body.competitors).toEqual([]);
 
-    const withProposed = await request(app).get("/api/competitors?include=proposed");
+    const withProposed = await request(app).get(`${api(productId)}/competitors?include=proposed`);
     expect(withProposed.status).toBe(200);
     expect(withProposed.body.competitors).toHaveLength(1);
     expect(withProposed.body.competitors[0]).toMatchObject({
@@ -209,22 +258,22 @@ describe("Competitors API (stable-ID surface, §6)", () => {
   });
 
   it("POST /:id/accept flips proposed → tracked and is idempotent", async () => {
-    const res = await request(app).post(`/api/competitors/${competitorId}/accept`);
+    const res = await request(app).post(`${api(productId)}/competitors/${competitorId}/accept`);
     expect(res.status).toBe(200);
     expect(res.body.competitor).toMatchObject({ id: competitorId, status: "tracked" });
 
-    // Accepting an already-tracked competitor is a no-op 200
-    const again = await request(app).post(`/api/competitors/${competitorId}/accept`);
+    const again = await request(app).post(`${api(productId)}/competitors/${competitorId}/accept`);
     expect(again.status).toBe(200);
     expect(again.body.competitor).toMatchObject({ id: competitorId, status: "tracked" });
   });
 
-  it("GET /api/competitors lists the enriched card", async () => {
-    const res = await request(app).get("/api/competitors");
+  it("GET .../competitors lists the enriched card", async () => {
+    const res = await request(app).get(`${api(productId)}/competitors`);
     expect(res.status).toBe(200);
     expect(res.body.competitors).toHaveLength(1);
     expect(res.body.competitors[0]).toMatchObject({
       id: competitorId,
+      entityId: acmeEntityId,
       name: "Acme",
       status: "tracked",
       enrichmentStatus: "completed",
@@ -234,7 +283,7 @@ describe("Competitors API (stable-ID surface, §6)", () => {
 
   it("PATCH threat level → history row written; PATCH classification → ADJACENT", async () => {
     const res = await request(app)
-      .patch(`/api/competitors/${competitorId}`)
+      .patch(`${api(productId)}/competitors/${competitorId}`)
       .send({ threatLevel: "big_threat" });
     expect(res.status).toBe(200);
     expect(res.body.competitor.threatLevel).toBe("big_threat");
@@ -244,38 +293,40 @@ describe("Competitors API (stable-ID surface, §6)", () => {
     expect(history[0]).toMatchObject({ previousLevel: "none", newLevel: "big_threat" });
 
     // Same level again → no extra history row
-    await request(app).patch(`/api/competitors/${competitorId}`).send({ threatLevel: "big_threat" });
+    await request(app).patch(`${api(productId)}/competitors/${competitorId}`).send({ threatLevel: "big_threat" });
     expect(await storage.getCompetitorThreatLevelHistory(competitorId)).toHaveLength(1);
 
     const reclass = await request(app)
-      .patch(`/api/competitors/${competitorId}`)
+      .patch(`${api(productId)}/competitors/${competitorId}`)
       .send({ classification: "ADJACENT" });
     expect(reclass.status).toBe(200);
     expect(reclass.body.competitor.classification).toBe("ADJACENT");
+
+    // Restore for later assertions
+    await request(app).patch(`${api(productId)}/competitors/${competitorId}`).send({ classification: "DIRECT" });
   });
 
   it("PATCH with an empty body → 400", async () => {
-    const res = await request(app).patch(`/api/competitors/${competitorId}`).send({});
+    const res = await request(app).patch(`${api(productId)}/competitors/${competitorId}`).send({});
     expect(res.status).toBe(400);
   });
 
-  it("GET /api/competitors/runs/active → false when idle, details when a run is live", async () => {
-    const idle = await request(app).get("/api/competitors/runs/active");
+  it("GET .../competitors/runs/active → false when idle, details when a run is live", async () => {
+    const idle = await request(app).get(`${api(productId)}/competitors/runs/active`);
     expect(idle.status).toBe(200);
     expect(idle.body).toEqual({ active: false });
 
     // Simulate a live summary run (execution row with competitorName)
     const agent = await getAiAgentBySlug("competitor-summary-agent");
-    const product = (await request(app).get("/api/product")).body.product;
     const execution = await createAiAgentExecution({
       agentId: agent!.id,
       organizationId: LOCAL_ORGANIZATION_ID,
-      productId: product.id,
+      productId,
       status: "running",
       inputParameters: { competitorName: "Acme" },
     });
 
-    const active = await request(app).get("/api/competitors/runs/active");
+    const active = await request(app).get(`${api(productId)}/competitors/runs/active`);
     expect(active.status).toBe(200);
     expect(active.body).toMatchObject({
       active: true,
@@ -286,49 +337,44 @@ describe("Competitors API (stable-ID surface, §6)", () => {
     expect(active.body.startedAt).toBeTruthy();
 
     // Refresh must refuse while the run is live — 409 with the active run attached
-    const blocked = await request(app).post(`/api/competitors/${competitorId}/refresh`);
+    const blocked = await request(app).post(`${api(productId)}/competitors/${competitorId}/refresh`);
     expect(blocked.status).toBe(409);
     expect(blocked.body.activeRun).toMatchObject({ competitorName: "Acme" });
 
     await updateAiAgentExecution(execution.id, { status: "completed", completedAt: new Date() });
   });
 
-  it("POST refresh → 202 { runId }; the updates scan records the detected change", async () => {
-    const res = await request(app).post(`/api/competitors/${competitorId}/refresh`);
+  it("POST refresh → 202 { runId }; the entity-scoped updates scan records the detected change", async () => {
+    const res = await request(app).post(`${api(productId)}/competitors/${competitorId}/refresh`);
     expect(res.status).toBe(202);
     expect(res.body.runId).toMatch(/[0-9a-f-]{36}/);
 
     await settleBackgroundTasks();
 
-    const detail = await request(app).get(`/api/competitors/${competitorId}`);
+    const detail = await request(app).get(`${api(productId)}/competitors/${competitorId}`);
     const titles = detail.body.changes.map((c: { title: string }) => c.title);
     expect(titles).toContain("v2.0 — AI summaries launched");
 
+    // Release sources were probed and cached on the ENTITY
+    const entity = await storage.getCompetitorEntityById(acmeEntityId);
+    expect(entity!.validReleaseSources).toBeTruthy();
+
     // Running refresh again does NOT duplicate the change (dedupe by title+URL)
-    const second = await request(app).post(`/api/competitors/${competitorId}/refresh`);
+    const second = await request(app).post(`${api(productId)}/competitors/${competitorId}/refresh`);
     expect(second.status).toBe(202);
     await settleBackgroundTasks();
-    const after = await request(app).get(`/api/competitors/${competitorId}`);
+    const after = await request(app).get(`${api(productId)}/competitors/${competitorId}`);
     const matching = after.body.changes.filter((c: { title: string }) => c.title === "v2.0 — AI summaries launched");
     expect(matching).toHaveLength(1);
   });
 
-  it("GET /api/changes → paginated product-wide feed", async () => {
-    const res = await request(app).get("/api/changes?limit=1&offset=0");
+  it("GET .../changes → paginated product-relevant feed with entity attribution", async () => {
+    const res = await request(app).get(`${api(productId)}/changes?limit=1&offset=0`);
     expect(res.status).toBe(200);
     expect(res.body.changes).toHaveLength(1);
+    expect(res.body.changes[0].competitorName).toBe("Acme");
+    expect(res.body.changes[0].entityId).toBe(acmeEntityId);
     expect(res.body.total).toBeGreaterThanOrEqual(2);
-  });
-
-  it("DELETE /api/competitors/:id → 204, then 404 on subsequent reads", async () => {
-    const res = await request(app).delete(`/api/competitors/${competitorId}`);
-    expect(res.status).toBe(204);
-
-    const gone = await request(app).get(`/api/competitors/${competitorId}`);
-    expect(gone.status).toBe(404);
-
-    const patchGone = await request(app).patch(`/api/competitors/${competitorId}`).send({ threatLevel: "none" });
-    expect(patchGone.status).toBe(404);
   });
 
   it("unknown /api route → JSON 404, never HTML", async () => {
@@ -338,174 +384,243 @@ describe("Competitors API (stable-ID surface, §6)", () => {
   });
 });
 
-describe("Review-before-save gate (spec 2.4 server implementation)", () => {
-  let productRow: Product;
+describe("Review-before-save gate (spec 2.4, per-facet per ADR 003 §2.3)", () => {
   let zephyrId: string;
+  let zephyrEntityId: string;
   let nimbusId: string;
 
   it("draft changes of a proposed competitor show on its detail view but never in the feed", async () => {
-    productRow = (await request(app).get("/api/product")).body.product as Product;
-
     const res = await request(app)
-      .post("/api/competitors")
+      .post(`${api(productId)}/competitors`)
       .send({ name: "Zephyr", url: "https://zephyr.example", classification: "DIRECT" });
     expect(res.status).toBe(201);
     zephyrId = res.body.competitor.id;
+    zephyrEntityId = res.body.competitor.entityId;
     await settleBackgroundTasks();
 
     // Enrichment recorded a feature-discovery change against the draft…
-    const detail = await request(app).get(`/api/competitors/${zephyrId}`);
+    const detail = await request(app).get(`${api(productId)}/competitors/${zephyrId}`);
     expect(detail.status).toBe(200);
     expect(detail.body.competitor.status).toBe("proposed");
     const draftTitles = detail.body.changes.map((c: { title: string }) => c.title);
     expect(draftTitles.some((t: string) => t.includes("Zephyr"))).toBe(true);
 
-    // …but the product-wide feed must never surface a proposed competitor
-    const feed = await request(app).get("/api/changes?limit=100");
+    // …but the product feed must never surface a proposed competitor — the
+    // exclusion is the tracked-facet join predicate now.
+    const feed = await request(app).get(`${api(productId)}/changes?limit=100`);
     expect(feed.status).toBe(200);
     const feedTitles = feed.body.changes.map((c: { title: string }) => c.title);
     expect(feedTitles.some((t: string) => t.includes("Zephyr"))).toBe(false);
-    // Retained changes from the earlier (tracked) Acme delete still flow
+    // Acme's tracked changes still flow
     expect(feed.body.changes.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("DELETE a proposed competitor discards it completely — no rows left behind", async () => {
+  it("DELETE a proposed competitor discards facet + entity + changes — no rows left behind", async () => {
     // Give the proposal threat-level history to prove the purge covers it
-    await request(app).patch(`/api/competitors/${zephyrId}`).send({ threatLevel: "watch" });
+    await request(app).patch(`${api(productId)}/competitors/${zephyrId}`).send({ threatLevel: "watch" });
     expect(await storage.getCompetitorThreatLevelHistory(zephyrId)).toHaveLength(1);
-    expect((await storage.getCompetitorChangesByProductAndName(productRow.id, "Zephyr")).length).toBeGreaterThanOrEqual(1);
+    expect((await storage.getCompetitorChangesByEntity(zephyrEntityId)).length).toBeGreaterThanOrEqual(1);
 
-    const res = await request(app).delete(`/api/competitors/${zephyrId}`);
+    const res = await request(app).delete(`${api(productId)}/competitors/${zephyrId}`);
     expect(res.status).toBe(204);
 
-    // A proposal that was never accepted leaves no history
+    // A proposal that was never accepted leaves no history — the entity GC
+    // (§2.3 step 4) collected the node and its change rows too.
     expect(await storage.getCompetitorProfileById(zephyrId)).toBeUndefined();
-    expect(await storage.getCompetitorChangesByProductAndName(productRow.id, "Zephyr")).toEqual([]);
+    expect(await storage.getCompetitorEntityById(zephyrEntityId)).toBeUndefined();
+    expect(await storage.getCompetitorChangesByEntity(zephyrEntityId)).toEqual([]);
     expect(await storage.getCompetitorThreatLevelHistory(zephyrId)).toEqual([]);
   });
 
   it("accept succeeds when enrichment failed (the save-unverified path)", async () => {
     const res = await request(app)
-      .post("/api/competitors")
+      .post(`${api(productId)}/competitors`)
       .send({ name: "Nimbus", classification: "ADJACENT" });
     expect(res.status).toBe(201);
     nimbusId = res.body.competitor.id;
     await settleBackgroundTasks();
     await storage.updateCompetitorProfile(nimbusId, { enrichmentStatus: "failed" });
 
-    const accepted = await request(app).post(`/api/competitors/${nimbusId}/accept`);
+    const accepted = await request(app).post(`${api(productId)}/competitors/${nimbusId}/accept`);
     expect(accepted.status).toBe(200);
     expect(accepted.body.competitor).toMatchObject({
       id: nimbusId,
       status: "tracked",
       enrichmentStatus: "failed",
     });
-  });
 
-  it("scheduled runs skip proposed competitors", async () => {
-    // Tracked: Nimbus (accepted above). Proposed: Quill.
-    const res = await request(app)
-      .post("/api/competitors")
-      .send({ name: "Quill", classification: "DIRECT" });
-    expect(res.status).toBe(201);
-    const quillId = res.body.competitor.id;
-    await settleBackgroundTasks();
-
-    // Features scan touches only the tracked competitor
-    const features = await runFeaturesScanForProduct(LOCAL_ORGANIZATION_ID, productRow);
-    expect(features).toEqual({ processedCount: 1, failedCount: 0 });
-
-    // Updates scan probes/caches release sources for tracked rows only
-    await runUpdatesScan(LOCAL_ORGANIZATION_ID, productRow);
-    const quill = await storage.getCompetitorProfileById(quillId);
-    expect(quill!.validReleaseSources).toBeNull();
-    const nimbus = await storage.getCompetitorProfileById(nimbusId);
-    expect(nimbus!.validReleaseSources).toBeTruthy();
-
-    // With only the proposed competitor remaining, the scheduled scan is a no-op
-    await request(app).delete(`/api/competitors/${nimbusId}`);
-    const idle = await runUpdatesScan(LOCAL_ORGANIZATION_ID, productRow);
-    expect(idle).toMatchObject({ savedCount: 0, totalFound: 0, summary: "No competitors to scan" });
+    // Clean up so later entity-target assertions stay focused on Acme
+    await request(app).delete(`${api(productId)}/competitors/${nimbusId}`);
   });
 });
 
-describe("Inline-rename of proposed competitors (spec 2.4 proposal card)", () => {
-  let productRow: Product;
+describe("Adoption flow across products (ADR 003 §2.3 step 2)", () => {
+  let acmeOnBId: string;
+
+  it("POST /api/products creates the second product", async () => {
+    const res = await request(app)
+      .post("/api/products")
+      .send({ name: "Second Product", url: "https://second.example" });
+    expect(res.status).toBe(201);
+    productBId = res.body.product.id;
+  });
+
+  it("adding a competitor whose entity exists in the org → instant profile from the entity, facet-only enrichment", async () => {
+    const entityBefore = await storage.getCompetitorEntityById(acmeEntityId);
+    const changeCountBefore = (await storage.getCompetitorChangesByEntity(acmeEntityId, 200)).length;
+
+    const res = await request(app)
+      .post(`${api(productBId)}/competitors`)
+      .send({ name: "acme", classification: "DIRECT" }); // case-insensitive dedup by normalised name
+    expect(res.status).toBe(201);
+    expect(res.body.adopted).toBe(true);
+    const card = res.body.competitor;
+    acmeOnBId = card.id;
+    expect(card.entityId).toBe(acmeEntityId); // the SAME entity node — no duplicate research
+    expect(card.status).toBe("proposed"); // the gate still applies at the facet
+    // The proposal card renders the entity's existing profile instantly
+    expect(card.summary).toMatch(/project management tool/);
+    // The adoption signal (client contract): who already tracks this entity
+    expect(card.alsoTrackedBy).toEqual([{ productId, productName: "Our Product" }]);
+
+    await settleBackgroundTasks();
+
+    // Facet-only enrichment: differentiators landed on B's facet…
+    const facetB = await storage.getCompetitorProfileById(acmeOnBId);
+    expect((facetB!.keyDifferentiators as string[]).length).toBeGreaterThanOrEqual(1);
+    expect(facetB!.enrichmentStatus).toBe("completed");
+    // …but NO entity re-research: entity untouched, no new feature-change rows
+    const entityAfter = await storage.getCompetitorEntityById(acmeEntityId);
+    expect(entityAfter!.updatedAt!.getTime()).toBe(entityBefore!.updatedAt!.getTime());
+    expect((await storage.getCompetitorChangesByEntity(acmeEntityId, 200)).length).toBe(changeCountBefore);
+  });
+
+  it("the facet-grain 409 fires per (productId, entityId)", async () => {
+    const res = await request(app)
+      .post(`${api(productBId)}/competitors`)
+      .send({ name: "Acme", classification: "ADJACENT" });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/already exists/i);
+  });
+
+  it("entity-scoped agent targets: one target per entity, only while tracked facets exist", async () => {
+    // Product B's facet is still proposed — only A's tracked facet counts,
+    // and the entity appears exactly ONCE.
+    let targets = await listEntityAgentTargets("competitorUpdates");
+    expect(targets.filter(t => t.entityId === acmeEntityId)).toHaveLength(1);
+
+    // Accept on B: still one target (monitoring runs once per entity, §2.7)
+    await request(app).post(`${api(productBId)}/competitors/${acmeOnBId}/accept`);
+    targets = await listEntityAgentTargets("competitorUpdates");
+    expect(targets.filter(t => t.entityId === acmeEntityId)).toHaveLength(1);
+    expect(targets.find(t => t.entityId === acmeEntityId)).toMatchObject({
+      entityName: "Acme",
+      organizationId: LOCAL_ORGANIZATION_ID,
+    });
+  });
+
+  it("product B's feed serves the shared entity's changes through the join", async () => {
+    const feed = await request(app).get(`${api(productBId)}/changes?limit=100`);
+    expect(feed.status).toBe(200);
+    const titles = feed.body.changes.map((c: { title: string }) => c.title);
+    expect(titles).toContain("v2.0 — AI summaries launched");
+  });
+
+  it("org-level entity view lists the node with both product facets", async () => {
+    const res = await request(app).get("/api/entities/competitors");
+    expect(res.status).toBe(200);
+    const acme = res.body.entities.find((e: { name: string }) => e.name === "Acme");
+    expect(acme).toBeTruthy();
+    expect(acme.facets).toHaveLength(2);
+    const productNames = acme.facets.map((f: { productName: string }) => f.productName).sort();
+    expect(productNames).toEqual(["Our Product", "Second Product"]);
+
+    const detail = await request(app).get(`/api/entities/competitors/${acmeEntityId}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.entity.name).toBe("Acme");
+    expect(detail.body.entity.keyFeatures).toHaveLength(2);
+    expect(detail.body.children).toEqual([]);
+  });
+
+  it("deleting one product's tracked facet never collaterally damages the other's context", async () => {
+    const res = await request(app).delete(`${api(productBId)}/competitors/${acmeOnBId}`);
+    expect(res.status).toBe(204);
+
+    // Entity + changes survive: product A still tracks the node
+    expect(await storage.getCompetitorEntityById(acmeEntityId)).toBeDefined();
+    expect((await storage.getCompetitorChangesByEntity(acmeEntityId, 200)).length).toBeGreaterThanOrEqual(1);
+    const listA = await request(app).get(`${api(productId)}/competitors`);
+    expect(listA.body.competitors.map((c: { name: string }) => c.name)).toContain("Acme");
+  });
+
+  it("deleting the LAST facet on the tree deletes the entity and its changes (§2.3 step 5)", async () => {
+    const res = await request(app).delete(`${api(productId)}/competitors/${competitorId}`);
+    expect(res.status).toBe(204);
+
+    expect(await storage.getCompetitorProfileById(competitorId)).toBeUndefined();
+    expect(await storage.getCompetitorEntityById(acmeEntityId)).toBeUndefined();
+    expect(await storage.getCompetitorChangesByEntity(acmeEntityId)).toEqual([]);
+
+    const gone = await request(app).get(`${api(productId)}/competitors/${competitorId}`);
+    expect(gone.status).toBe(404);
+    const patchGone = await request(app).patch(`${api(productId)}/competitors/${competitorId}`).send({ threatLevel: "none" });
+    expect(patchGone.status).toBe(404);
+  });
+});
+
+describe("Rename (ADR 003 §2.4: an entity-row update; tracked restriction lifted)", () => {
   let vellumId: string;
+  let vellumEntityId: string;
 
-  it("rename-proposed persists, draft change rows follow, and the name survives accept", async () => {
-    productRow = (await request(app).get("/api/product")).body.product as Product;
-
+  it("rename-proposed persists; entity-keyed change rows need no walking", async () => {
     const created = await request(app)
-      .post("/api/competitors")
+      .post(`${api(productId)}/competitors`)
       .send({ name: "Vellum", url: "https://vellum.example", classification: "DIRECT" });
     expect(created.status).toBe(201);
     vellumId = created.body.competitor.id;
+    vellumEntityId = created.body.competitor.entityId;
     await settleBackgroundTasks();
-    expect((await storage.getCompetitorChangesByProductAndName(productRow.id, "Vellum")).length).toBeGreaterThanOrEqual(1);
+    expect((await storage.getCompetitorChangesByEntity(vellumEntityId)).length).toBeGreaterThanOrEqual(1);
 
     const renamed = await request(app)
-      .patch(`/api/competitors/${vellumId}`)
+      .patch(`${api(productId)}/competitors/${vellumId}`)
       .send({ name: "Vellum Labs" });
     expect(renamed.status).toBe(200);
     expect(renamed.body.competitor).toMatchObject({ id: vellumId, name: "Vellum Labs", status: "proposed" });
 
-    // Draft change rows followed the rename — nothing orphaned under the old name
-    expect(await storage.getCompetitorChangesByProductAndName(productRow.id, "Vellum")).toEqual([]);
-    expect((await storage.getCompetitorChangesByProductAndName(productRow.id, "Vellum Labs")).length).toBeGreaterThanOrEqual(1);
-
-    // Detail view still carries the draft changes; the feed still excludes them
-    const detail = await request(app).get(`/api/competitors/${vellumId}`);
+    // Change rows are FK'd to the entity — they follow the rename by identity,
+    // not by a transactional name walk.
+    expect((await storage.getCompetitorChangesByEntity(vellumEntityId)).length).toBeGreaterThanOrEqual(1);
+    const detail = await request(app).get(`${api(productId)}/competitors/${vellumId}`);
     expect(detail.body.competitor.name).toBe("Vellum Labs");
     expect(detail.body.changes.length).toBeGreaterThanOrEqual(1);
-    const feed = await request(app).get("/api/changes?limit=100");
-    const feedTitles = feed.body.changes.map((c: { title: string }) => c.title);
-    expect(feedTitles.some((t: string) => t.includes("Vellum"))).toBe(false);
 
     // The rename survives accept
-    const accepted = await request(app).post(`/api/competitors/${vellumId}/accept`);
+    const accepted = await request(app).post(`${api(productId)}/competitors/${vellumId}/accept`);
     expect(accepted.status).toBe(200);
     expect(accepted.body.competitor).toMatchObject({ name: "Vellum Labs", status: "tracked" });
-    const list = await request(app).get("/api/competitors");
-    expect(list.body.competitors.map((c: { name: string }) => c.name)).toContain("Vellum Labs");
   });
 
-  it("discard after rename purges the renamed draft change rows", async () => {
-    const created = await request(app)
-      .post("/api/competitors")
-      .send({ name: "Willow", url: "https://willow.example", classification: "DIRECT" });
-    expect(created.status).toBe(201);
-    const willowId = created.body.competitor.id;
+  it("renaming a TRACKED competitor now succeeds (the sprint-2 400 is lifted)", async () => {
+    const res = await request(app)
+      .patch(`${api(productId)}/competitors/${vellumId}`)
+      .send({ name: "Vellum HQ" });
+    expect(res.status).toBe(200);
+    expect(res.body.competitor.name).toBe("Vellum HQ");
+    // History stayed attached through the entity FK
+    expect((await storage.getCompetitorChangesByEntity(vellumEntityId)).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renaming onto an existing name → 409 (org-wide, case-insensitive)", async () => {
+    const other = await request(app)
+      .post(`${api(productId)}/competitors`)
+      .send({ name: "Beacon", classification: "DIRECT" });
+    expect(other.status).toBe(201);
     await settleBackgroundTasks();
 
-    const renamed = await request(app).patch(`/api/competitors/${willowId}`).send({ name: "Willow HQ" });
-    expect(renamed.status).toBe(200);
-
-    const res = await request(app).delete(`/api/competitors/${willowId}`);
-    expect(res.status).toBe(204);
-    expect(await storage.getCompetitorProfileById(willowId)).toBeUndefined();
-    expect(await storage.getCompetitorChangesByProductAndName(productRow.id, "Willow")).toEqual([]);
-    expect(await storage.getCompetitorChangesByProductAndName(productRow.id, "Willow HQ")).toEqual([]);
-  });
-
-  it("renaming a TRACKED competitor → 400 with a clear error", async () => {
-    // Vellum Labs was accepted above
-    const res = await request(app).patch(`/api/competitors/${vellumId}`).send({ name: "Beacon" });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/proposed/i);
-    // Name unchanged
-    const detail = await request(app).get(`/api/competitors/${vellumId}`);
-    expect(detail.body.competitor.name).toBe("Vellum Labs");
-  });
-
-  it("renaming a proposed competitor onto an existing name → 409 (case-insensitive, like POST)", async () => {
-    // Quill is still proposed from the scheduler test
-    const proposed = await request(app).get("/api/competitors?include=proposed");
-    const quill = proposed.body.competitors.find((c: { name: string }) => c.name === "Quill");
-    expect(quill).toBeTruthy();
-    expect(quill.status).toBe("proposed");
-
-    const res = await request(app).patch(`/api/competitors/${quill.id}`).send({ name: "vellum labs" });
+    const res = await request(app)
+      .patch(`${api(productId)}/competitors/${other.body.competitor.id}`)
+      .send({ name: "vellum hq" });
     expect(res.status).toBe(409);
     expect(res.body.error).toMatch(/already exists/i);
   });

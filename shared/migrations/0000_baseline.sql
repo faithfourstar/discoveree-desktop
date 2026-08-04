@@ -1,21 +1,43 @@
 -- 0000_baseline — Discoveree Desktop squashed baseline (regenerated).
 --
--- REGENERATED IN PLACE (ADR 002 risk 8 ruling, zero installs existed — the
--- baseline's one free rewrite): the three battlecard columns on
--- competitor_profiles (battlecard_messages, battlecard_ready_flag,
--- battlecard_output) were DROPPED. Battlecards are a CUT module (build brief
--- §3: MCP replaces them); desktop code must never write these columns.
+-- Rewrite history (the baseline's free-rewrite window is open until first
+-- public release — ADR 003 §5; each rewrite happened with zero installs):
 --
--- REGENERATED AGAIN (same zero-installs rewrite window, ADR 002 §9 addendum):
--- competitor_profiles gained a lifecycle "status" column
--- (text, NOT NULL, DEFAULT 'tracked'; values: proposed | tracked) for the
--- review-before-save gate (competitors-module-spec §2.4). POST creates
--- "proposed" explicitly; the tracked default keeps future imports/seeds sane.
+-- 1. REGENERATED (ADR 002 risk 8 ruling): the three battlecard columns on
+--    competitor_profiles (battlecard_messages, battlecard_ready_flag,
+--    battlecard_output) were DROPPED. Battlecards are a CUT module (build
+--    brief §3: MCP replaces them); desktop code must never write them.
+--
+-- 2. REGENERATED (ADR 002 §9 addendum): competitor_profiles gained a
+--    lifecycle "status" column (text, NOT NULL, DEFAULT 'tracked'; values:
+--    proposed | tracked) for the review-before-save gate
+--    (competitors-module-spec §2.4).
+--
+-- 3. REGENERATED (ADR 003 — multi-product entities; the LAST planned rewrite
+--    before the release freeze):
+--    - competitor_entities added: org-level canonical competitor identity,
+--      facts and monitoring state, researched once per org; two-level
+--      self-referencing tree via parent_entity_id (§2.9; the two-level
+--      invariant is enforced in service code).
+--    - competitor_profiles became the per-product FACET (entity_id +
+--      product_id; classification, gate status, threat, comparisons);
+--      entity-fact columns moved to competitor_entities.
+--    - competitor_changes re-keyed to entity_id (dropped product_id and
+--      competitor_name), resolving the ADR 002 §9 name-keyed history edge.
+--    - ai_agent_executions gained nullable entity_id (entity-scoped agent
+--      frequency gates, §2.7).
+--    - Segment/persona tables reshaped ahead of the Customer Insights port
+--      (§2.6): segment_entities (org vocabulary), customer_segment_profiles
+--      as the facet (segment_entity_id + product_id; identity and legacy
+--      single-persona columns dropped), personas (org identity, replaces
+--      customer_segment_personas) + persona_facets (per-product goals, pain
+--      points, JTBD).
 CREATE TABLE "ai_agent_executions" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"agent_id" varchar NOT NULL,
 	"organization_id" varchar,
 	"product_id" varchar,
+	"entity_id" varchar,
 	"prompt_id" varchar,
 	"trigger_type" text DEFAULT 'automatic' NOT NULL,
 	"trigger_context" text,
@@ -101,8 +123,7 @@ CREATE TABLE "competitive_landscapes" (
 --> statement-breakpoint
 CREATE TABLE "competitor_changes" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"product_id" varchar NOT NULL,
-	"competitor_name" text NOT NULL,
+	"entity_id" varchar NOT NULL,
 	"source_category" text DEFAULT 'competitor',
 	"change_type" text DEFAULT 'update' NOT NULL,
 	"change_title" text NOT NULL,
@@ -117,59 +138,72 @@ CREATE TABLE "competitor_changes" (
 	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE "competitor_profiles" (
+CREATE TABLE "competitor_entities" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"product_id" varchar NOT NULL,
-	"competitor_name" text NOT NULL,
-	"competitor_url" text,
-	"competitor_url_source" text DEFAULT 'ai-discovered',
-	"source_category" text DEFAULT 'competitor',
-	"status" text DEFAULT 'tracked' NOT NULL,
+	"organization_id" varchar NOT NULL,
+	"name" text NOT NULL,
+	"normalized_name" text NOT NULL,
+	"parent_entity_id" varchar,
+	"url" text,
+	"url_source" text DEFAULT 'ai-discovered',
+	"domain" text,
+	"parent_company" text,
 	"description" text,
 	"description_source_url" text,
-	"help_center_url" text,
-	"help_center_url_source_url" text,
+	"summary_citations" jsonb,
 	"key_features" jsonb,
+	"markets" jsonb,
+	"customer_segments" jsonb,
+	"integrations" jsonb,
 	"pricing" text,
 	"pricing_source_url" text,
 	"pricing_tiers" jsonb,
 	"pricing_free_trial" boolean,
 	"pricing_notes" text,
-	"markets" jsonb,
-	"customer_segments" jsonb,
-	"key_differentiators" jsonb,
-	"summary_citations" jsonb,
-	"integrations" jsonb,
-	"integration_analysis" jsonb,
 	"reviews" jsonb,
 	"review_platforms" jsonb,
 	"review_positive_themes" jsonb,
 	"review_negative_themes" jsonb,
 	"review_average_rating" real,
 	"review_total_count" integer,
+	"help_center_url" text,
+	"help_center_url_source_url" text,
+	"changelog_url" text,
+	"changelog_url_source_url" text,
+	"changelog_content_hash" text,
+	"changelog_last_checked_at" timestamp,
+	"github_repo_url" text,
+	"github_stats" jsonb,
+	"valid_release_sources" jsonb,
+	"announcements" jsonb,
+	"announcements_analysis" text,
+	"investor_relations" jsonb,
 	"enrichment_status" text DEFAULT 'pending',
 	"last_enriched_at" timestamp,
-	"user_summary" jsonb,
 	"user_news" jsonb,
 	"user_pricing" jsonb,
 	"user_features" jsonb,
 	"user_integrations" jsonb,
 	"user_reviews" jsonb,
-	"investor_relations" jsonb,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
+CREATE TABLE "competitor_profiles" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"product_id" varchar NOT NULL,
+	"entity_id" varchar NOT NULL,
+	"source_category" text DEFAULT 'competitor',
+	"status" text DEFAULT 'tracked' NOT NULL,
+	"threat_level" text DEFAULT 'none',
+	"key_differentiators" jsonb,
 	"feature_strength_summary" text,
 	"pricing_analysis" text,
-	"threat_level" text DEFAULT 'none',
-	"parent_company" text,
+	"integration_analysis" jsonb,
 	"feature_persona_mapping" jsonb,
-	"announcements" jsonb,
-	"announcements_analysis" text,
-	"valid_release_sources" jsonb,
-	"github_repo_url" text,
-	"github_stats" jsonb,
-	"changelog_url" text,
-	"changelog_url_source_url" text,
-	"changelog_content_hash" text,
-	"changelog_last_checked_at" timestamp,
+	"user_summary" jsonb,
+	"enrichment_status" text DEFAULT 'pending',
+	"last_enriched_at" timestamp,
 	"created_at" timestamp DEFAULT now(),
 	"updated_at" timestamp DEFAULT now()
 );
@@ -200,39 +234,15 @@ CREATE TABLE "customer_call_recordings" (
 	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
-CREATE TABLE "customer_segment_personas" (
-	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"segment_profile_id" varchar NOT NULL,
-	"product_id" varchar NOT NULL,
-	"persona_title" text NOT NULL,
-	"persona_description" text,
-	"persona_demographics" jsonb,
-	"persona_goals" jsonb,
-	"persona_pain_points" jsonb,
-	"persona_behaviors" jsonb,
-	"sort_order" integer DEFAULT 0,
-	"created_at" timestamp DEFAULT now(),
-	"updated_at" timestamp DEFAULT now()
-);
---> statement-breakpoint
 CREATE TABLE "customer_segment_profiles" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"product_id" varchar NOT NULL,
 	"organization_id" varchar NOT NULL,
-	"segment_name" text NOT NULL,
-	"segment_description" text,
-	"segment_type" text DEFAULT 'customer_segment',
-	"source_url" text,
+	"segment_entity_id" varchar NOT NULL,
 	"needs_summary" text,
 	"needs" jsonb,
 	"overall_satisfaction" real,
 	"jobs_to_be_done" jsonb,
-	"persona_title" text,
-	"persona_description" text,
-	"persona_demographics" jsonb,
-	"persona_goals" jsonb,
-	"persona_pain_points" jsonb,
-	"persona_behaviors" jsonb,
 	"csat_score" real,
 	"csat_comments" jsonb,
 	"csat_data_source" text,
@@ -600,6 +610,29 @@ CREATE TABLE "organizations" (
 	CONSTRAINT "organizations_slug_unique" UNIQUE("slug")
 );
 --> statement-breakpoint
+CREATE TABLE "persona_facets" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"persona_id" varchar NOT NULL,
+	"product_id" varchar NOT NULL,
+	"goals" jsonb,
+	"pain_points" jsonb,
+	"jobs_to_be_done" jsonb,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
+CREATE TABLE "personas" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"segment_entity_id" varchar NOT NULL,
+	"title" text NOT NULL,
+	"description" text,
+	"demographics" jsonb,
+	"behaviours" jsonb,
+	"sort_order" integer DEFAULT 0,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
 CREATE TABLE "platform_skill_suppressions" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"org_id" varchar NOT NULL,
@@ -784,6 +817,18 @@ CREATE TABLE "roadmap_summaries" (
 	CONSTRAINT "roadmap_summaries_product_id_unique" UNIQUE("product_id")
 );
 --> statement-breakpoint
+CREATE TABLE "segment_entities" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"organization_id" varchar NOT NULL,
+	"name" text NOT NULL,
+	"normalized_name" text NOT NULL,
+	"segment_type" text DEFAULT 'customer_segment',
+	"description" text,
+	"source_url" text,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
 CREATE TABLE "shared_conversations" (
 	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"organization_id" varchar NOT NULL,
@@ -885,9 +930,17 @@ CREATE TABLE "users" (
 	CONSTRAINT "users_email_unique" UNIQUE("email")
 );
 --> statement-breakpoint
+CREATE INDEX "idx_competitor_changes_entity" ON "competitor_changes" USING btree ("entity_id","detected_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_competitor_entities_org_normalized" ON "competitor_entities" USING btree ("organization_id","normalized_name");--> statement-breakpoint
+CREATE INDEX "idx_competitor_entities_org_domain" ON "competitor_entities" USING btree ("organization_id","domain");--> statement-breakpoint
+CREATE INDEX "idx_competitor_entities_parent" ON "competitor_entities" USING btree ("parent_entity_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_competitor_profiles_product_entity" ON "competitor_profiles" USING btree ("product_id","entity_id");--> statement-breakpoint
+CREATE INDEX "idx_competitor_profiles_entity" ON "competitor_profiles" USING btree ("entity_id");--> statement-breakpoint
 CREATE INDEX "idx_threat_level_history_profile" ON "competitor_threat_level_history" USING btree ("competitor_profile_id");--> statement-breakpoint
 CREATE INDEX "idx_threat_level_history_product" ON "competitor_threat_level_history" USING btree ("product_id","changed_at");--> statement-breakpoint
 CREATE INDEX "idx_call_recordings_segment" ON "customer_call_recordings" USING btree ("segment_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_customer_segment_profiles_product_entity" ON "customer_segment_profiles" USING btree ("product_id","segment_entity_id");--> statement-breakpoint
+CREATE INDEX "idx_customer_segment_profiles_entity" ON "customer_segment_profiles" USING btree ("segment_entity_id");--> statement-breakpoint
 CREATE INDEX "idx_deleted_segments_product" ON "deleted_customer_segment_names" USING btree ("product_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "idx_deleted_segments_product_normalized" ON "deleted_customer_segment_names" USING btree ("product_id","normalized_name");--> statement-breakpoint
 CREATE INDEX "idx_feedback_entries_product_id" ON "feedback_entries" USING btree ("product_id");--> statement-breakpoint
@@ -902,6 +955,9 @@ CREATE INDEX "idx_market_reviews_product" ON "market_reviews" USING btree ("prod
 CREATE UNIQUE INDEX "idx_market_reviews_product_month" ON "market_reviews" USING btree ("product_id","review_month");--> statement-breakpoint
 CREATE INDEX "idx_opportunities_team_id" ON "opportunities" USING btree ("team_id");--> statement-breakpoint
 CREATE INDEX "idx_opportunities_product_id" ON "opportunities" USING btree ("product_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_persona_facets_persona_product" ON "persona_facets" USING btree ("persona_id","product_id");--> statement-breakpoint
+CREATE INDEX "idx_persona_facets_product" ON "persona_facets" USING btree ("product_id");--> statement-breakpoint
+CREATE INDEX "idx_personas_segment_entity" ON "personas" USING btree ("segment_entity_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "platform_skill_suppressions_org_skill_idx" ON "platform_skill_suppressions" USING btree ("org_id","skill_id");--> statement-breakpoint
 CREATE INDEX "idx_product_features_product_id" ON "product_features" USING btree ("product_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "idx_product_features_product_normalized" ON "product_features" USING btree ("product_id","normalized_name");--> statement-breakpoint
@@ -909,6 +965,7 @@ CREATE INDEX "idx_product_help_articles_product_id" ON "product_help_articles" U
 CREATE UNIQUE INDEX "idx_product_help_articles_product_url" ON "product_help_articles" USING btree ("product_id","url");--> statement-breakpoint
 CREATE INDEX "idx_roadmap_recommendations_product" ON "roadmap_recommendations" USING btree ("product_id");--> statement-breakpoint
 CREATE INDEX "idx_roadmap_recommendations_product_status" ON "roadmap_recommendations" USING btree ("product_id","status");--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_segment_entities_org_normalized" ON "segment_entities" USING btree ("organization_id","normalized_name");--> statement-breakpoint
 CREATE INDEX "idx_shared_conversations_org" ON "shared_conversations" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX "idx_thought_partner_conversations_org" ON "thought_partner_conversations" USING btree ("organization_id");--> statement-breakpoint
 CREATE INDEX "idx_thought_partner_conversations_product" ON "thought_partner_conversations" USING btree ("product_id");
