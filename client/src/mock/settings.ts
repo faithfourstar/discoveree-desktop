@@ -1,3 +1,4 @@
+import { displayDateFormat } from "@/lib/locale";
 import type {
   AgentFrequency,
   AgentScheduleRow,
@@ -218,33 +219,33 @@ export const PER_OBJECT_NOTE = "Nudge a single profile from its own page.";
 // when further out.
 // ---------------------------------------------------------------------------
 
-const timeFormat = new Intl.DateTimeFormat("en-GB", {
+const timeOptions: Intl.DateTimeFormatOptions = {
   hour: "2-digit",
   minute: "2-digit",
   hour12: false,
-});
-const dayTimeFormat = new Intl.DateTimeFormat("en-GB", {
+};
+const dayTimeOptions: Intl.DateTimeFormatOptions = {
   weekday: "short",
   hour: "2-digit",
   minute: "2-digit",
   hour12: false,
-});
-const dateFormat = new Intl.DateTimeFormat("en-GB", {
+};
+const dateOptions: Intl.DateTimeFormatOptions = {
   day: "numeric",
   month: "short",
-});
+};
 
 export function nextRunStamp(atMs: number, frequency: AgentFrequency): string {
   const date = new Date(atMs);
   if (frequency === "daily") {
-    return timeFormat.format(date);
+    return displayDateFormat(timeOptions).format(date);
   }
   const daysAway = (atMs - Date.now()) / (24 * 60 * 60 * 1000);
   if (daysAway <= 6.5) {
-    // "Thu 09:00" — en-GB gives "Thu, 09:00"; strip the comma.
-    return dayTimeFormat.format(date).replace(",", "");
+    // "Thu 09:00" — Intl gives "Thu, 09:00"; strip the comma.
+    return displayDateFormat(dayTimeOptions).format(date).replace(",", "");
   }
-  return dateFormat.format(date);
+  return displayDateFormat(dateOptions).format(date);
 }
 
 const FREQUENCY_DAYS: Record<

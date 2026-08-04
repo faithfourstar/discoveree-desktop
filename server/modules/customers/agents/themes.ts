@@ -24,6 +24,7 @@ import type { FeedbackTheme } from "@shared/schema";
 import { callLLM } from "../../../lib/llm/router.js";
 import { sanitizeJsonResponse } from "../../../lib/llm/json.js";
 import { AgentSlugs } from "../../../lib/agents/slugs.js";
+import { getSynthesisLanguageInstruction } from "../../../lib/settings/preferences.js";
 import {
   buildClassificationResultSchema,
   residueClusteringResultSchema,
@@ -202,7 +203,9 @@ FOR EACH CANDIDATE THEME, PROVIDE:
 3. averageSentiment: Average sentiment score of the grouped entries
 4. feedbackEntryIds: The exact entry IDs belonging to this theme
 5. confidence (0-100): How confident are you this represents a genuinely distinct problem?
-6. coherence (0-100): How tightly do the grouped entries relate to the same underlying problem?`;
+6. coherence (0-100): How tightly do the grouped entries relate to the same underlying problem?
+
+${await getSynthesisLanguageInstruction(organizationId)}`;
 
   const response = await callLLM({
     organizationId,

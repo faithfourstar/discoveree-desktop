@@ -14,6 +14,7 @@ import { callLLM } from "../../../lib/llm/router.js";
 import { sanitizeJsonResponse } from "../../../lib/llm/json.js";
 import { resolveAgentPrompt } from "../../../lib/agents/registry.js";
 import { AgentSlugs } from "../../../lib/agents/slugs.js";
+import { getSynthesisLanguageInstruction } from "../../../lib/settings/preferences.js";
 import { progressEmitter } from "../../../lib/progress.js";
 import { isGroundingRedirectUrl } from "../../../lib/web/urls.js";
 import { competitorSummaryResultSchema, type CompetitorSummaryResult } from "../schemas.js";
@@ -75,12 +76,15 @@ IMPORTANT: You MUST respond with ONLY a valid JSON object in this exact format (
   // Resolve prompt using priority: org-specific > platform-wide > default > fallback
   const basePrompt = await resolveAgentPrompt(AgentSlugs.COMPETITOR_SUMMARY, organizationId || "", fallbackPrompt);
 
-  // If we got a custom prompt from the database, we need to inject the context variables
+  // If we got a custom prompt from the database, we need to inject the context variables.
+  // The language instruction is appended at call time (locale seam) so the
+  // seeded/custom prompt text stays byte-identical to its source.
   const prompt = basePrompt
     .replace(/\$\{competitorName\}/g, competitorName)
     .replace(/\$\{competitorUrl\}/g, competitorUrl || "")
     .replace(/\$\{productName\}/g, productName)
-    .replace(/\$\{productDescription\}/g, productDescription || "");
+    .replace(/\$\{productDescription\}/g, productDescription || "")
+    + `\n\n${await getSynthesisLanguageInstruction(organizationId || "")}`;
 
   console.log(`[Competitor Summary] Generating summary for ${competitorName} compared to ${productName}`);
 

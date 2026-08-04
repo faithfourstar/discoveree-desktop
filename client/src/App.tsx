@@ -18,6 +18,7 @@ import {
   StrategyPage,
 } from "@/pages/stubs";
 import { AppStateProvider, useAppState } from "@/state/AppStateContext";
+import { LocaleProvider } from "@/state/locale";
 
 /**
  * URL guard for the product dimension (ADR 003 §1.2): module routes live
@@ -55,8 +56,9 @@ function ProductUrlGuard() {
 
 export function App() {
   return (
-    <AppStateProvider>
-      <ProductUrlGuard />
+    <LocaleProvider>
+      <AppStateProvider>
+        <ProductUrlGuard />
       <AppShell>
         <Switch>
           <Route path="/" component={HomePage} />
@@ -93,6 +95,7 @@ export function App() {
           <Route component={NotFoundPage} />
         </Switch>
       </AppShell>
-    </AppStateProvider>
+      </AppStateProvider>
+    </LocaleProvider>
   );
 }

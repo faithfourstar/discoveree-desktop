@@ -14,6 +14,7 @@ import { EvidenceRow } from "@/components/EvidenceChip";
 import { joinNames } from "@/lib/api";
 import { provenanceLine } from "@/mock/competitors";
 import { useAppActions, useAppState } from "@/state/AppStateContext";
+import { useT } from "@/state/locale";
 import type { AddStage, CompetitorProposal } from "@/mock/types";
 import { CapabilityColumns } from "./CapabilityColumns";
 import { ClassificationBadge } from "./chips";
@@ -34,6 +35,9 @@ const STAGE_ICONS: Record<string, LucideIcon> = {
 };
 
 function StageRow({ stage }: { stage: AddStage }) {
+  // Stage labels are app-assembled copy around data names (domains); the
+  // dictionary transform rewrites copy words only.
+  const t = useT();
   const Icon = STAGE_ICONS[stage.id] ?? Globe;
   const skipped = stage.status === "skipped";
   return (
@@ -54,7 +58,7 @@ function StageRow({ stage }: { stage: AddStage }) {
           skipped ? "text-faint" : "text-ink",
         ].join(" ")}
       >
-        {stage.label}
+        {t(stage.label)}
       </span>
       {stage.status === "running" ? (
         <Loader2
@@ -75,10 +79,11 @@ function StageRow({ stage }: { stage: AddStage }) {
 
 function ProposalCard({ proposal }: { proposal: CompetitorProposal }) {
   const actions = useAppActions();
+  const t = useT();
   return (
     <div className="mt-2">
       <div className="mb-3 font-mono text-xs tabular-nums text-faint">
-        {proposal.summaryLine}
+        {t(proposal.summaryLine)}
       </div>
       <div className="rounded-[10px] border border-edge bg-surface p-5">
         <div className="mb-1 flex items-baseline gap-3">
@@ -154,12 +159,12 @@ function ProposalCard({ proposal }: { proposal: CompetitorProposal }) {
         ) : null}
         {proposal.crawlOnlyNote ? (
           <p className="mb-4 text-[12.5px] leading-[1.6] text-faint">
-            {proposal.crawlOnlyNote}
+            {t(proposal.crawlOnlyNote)}
           </p>
         ) : null}
         {proposal.failureNote ? (
           <p className="mb-4 rounded-[9px] border border-red-500/20 bg-red-500/5 px-4 py-3 text-[13px] leading-[1.6] text-red-700 dark:text-red-400">
-            {proposal.failureNote}
+            {t(proposal.failureNote)}
           </p>
         ) : null}
         {proposal.evidence.length > 0 ? (

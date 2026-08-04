@@ -11,6 +11,7 @@ import { EvidenceRow } from "@/components/EvidenceChip";
 import { RichText } from "@/components/RichText";
 import { useProductHref } from "@/lib/productUrl";
 import { useAppActions, useAppState } from "@/state/AppStateContext";
+import { useT } from "@/state/locale";
 import type { CustomersOverview, SegmentAdoptionProposal } from "@/mock/types";
 
 /**
@@ -300,6 +301,7 @@ function PopulatedOverview({ overview }: { overview: CustomersOverview }) {
 /** Day one — module enabled, nothing yet (spec 2.4). */
 function DayOneCustomers() {
   const state = useAppState();
+  const t = useT();
   const actions = useAppActions();
   const proposals = state.segmentProposals;
   const [ticked, setTicked] = useState<readonly string[]>(
@@ -311,8 +313,9 @@ function DayOneCustomers() {
       <div className="flex justify-center px-8 py-[38px]">
         <div className="w-full max-w-[720px]">
           <p className="mb-2 text-[21px] leading-[1.5] tracking-[-0.01em] text-ink [text-wrap:pretty]">
-            One customer segment is already known to your organisation. Keep it
-            if it rings true for this product.
+            {t(
+              "One customer segment is already known to your organisation. Keep it if it rings true for this product.",
+            )}
           </p>
           <AdoptionCard adoption={state.segmentAdoption} />
         </div>

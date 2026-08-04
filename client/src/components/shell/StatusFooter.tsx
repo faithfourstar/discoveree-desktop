@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { goToSettingsBlock, type SettingsAnchor } from "@/lib/anchors";
 import { useProductHref } from "@/lib/productUrl";
 import { useAppState } from "@/state/AppStateContext";
+import { useT } from "@/state/locale";
 
 /**
  * The 30px mono status footer. Its segments are doors, not decoration
@@ -39,6 +40,11 @@ function FooterDoor({
 
 export function StatusFooter() {
   const { footer } = useAppState();
+  // Footer segments are app-assembled copy (dates and figures pass the
+  // dictionary untouched) — they flow through the display transform.
+  // EXCEPT the agents segment: it can embed competitor names ("checking
+  // Mixpanel…"), which are data; its copy carries no dictionary words.
+  const t = useT();
 
   return (
     <footer className="flex h-[30px] flex-none items-center gap-4 border-t border-edge bg-surface px-[18px] font-mono text-[11px] text-faint">
@@ -47,7 +53,7 @@ export function StatusFooter() {
           className="h-1.5 w-1.5 rounded-full bg-live"
           aria-hidden
         />
-        {footer.local}
+        {t(footer.local)}
       </FooterDoor>
       {footer.agents ? (
         <FooterDoor anchor="agent-schedules">
@@ -60,12 +66,12 @@ export function StatusFooter() {
           {footer.agents}
         </FooterDoor>
       ) : null}
-      {footer.mcp ? <span>{footer.mcp}</span> : null}
-      <span>{footer.offline}</span>
+      {footer.mcp ? <span>{t(footer.mcp)}</span> : null}
+      <span>{t(footer.offline)}</span>
       {footer.licence ? (
         <span className="ml-auto">
           <FooterDoor anchor="licence" amber={footer.licenceAmber}>
-            {footer.licence}
+            {t(footer.licence)}
           </FooterDoor>
         </span>
       ) : null}

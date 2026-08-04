@@ -1,3 +1,4 @@
+import { displayDateFormat } from "@/lib/locale";
 import { countNoun } from "@/lib/text";
 import { nextRunStamp, providerMeta } from "@/mock/settings";
 import type {
@@ -330,6 +331,14 @@ export const api = {
       body: JSON.stringify(body),
     }),
   getAbout: () => request<ServerAbout>("/api/settings/about"),
+  // Display-locale preference (contract being built in parallel).
+  getPreferences: () =>
+    request<{ displayLocale?: string }>("/api/settings/preferences"),
+  putPreferences: (body: { displayLocale: string }) =>
+    request<{ displayLocale?: string }>("/api/settings/preferences", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
 };
 
 // ---------------------------------------------------------------------------
@@ -360,11 +369,11 @@ export function threatToServer(word: ThreatWord): ServerThreatLevel {
 
 const STALE_THRESHOLD_DAYS = 14;
 
-const shortDate = new Intl.DateTimeFormat("en-GB", {
+const shortDateOptions: Intl.DateTimeFormatOptions = {
   day: "numeric",
   month: "short",
-});
-const weekday = new Intl.DateTimeFormat("en-GB", { weekday: "long" });
+};
+const weekdayOptions: Intl.DateTimeFormatOptions = { weekday: "long" };
 
 /** en-GB relative stamp: "just now", "12 m ago", "4 h ago", "3 d ago", "12 Jul". */
 export function relativeStamp(iso: string): string {
@@ -388,7 +397,7 @@ export function relativeStamp(iso: string): string {
   if (days <= STALE_THRESHOLD_DAYS * 2) {
     return `${days} d ago`;
   }
-  return shortDate.format(new Date(iso));
+  return displayDateFormat(shortDateOptions).format(new Date(iso));
 }
 
 export function daysSince(iso: string): number {
@@ -401,7 +410,7 @@ export function daysSince(iso: string): number {
 
 export function shortDateOf(iso: string): string {
   const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? "" : shortDate.format(date);
+  return Number.isNaN(date.getTime()) ? "" : displayDateFormat(shortDateOptions).format(date);
 }
 
 /** "since Thursday" within a week, else "since 12 Jul". */
@@ -413,7 +422,9 @@ export function freshSinceLabel(iso: string | null): string {
   if (Number.isNaN(date.getTime())) {
     return "the last check";
   }
-  return daysSince(iso) < 7 ? weekday.format(date) : shortDate.format(date);
+  return daysSince(iso) < 7
+    ? displayDateFormat(weekdayOptions).format(date)
+    : displayDateFormat(shortDateOptions).format(date);
 }
 
 /** The honest lede clause for a change record, generated from its type. */

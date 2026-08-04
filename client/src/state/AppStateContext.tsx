@@ -14,6 +14,7 @@ import {
 } from "./appStateCore";
 import { LiveAppStateProvider } from "./LiveAppStateProvider";
 import { competitorsViewKey } from "@/lib/storageKeys";
+import { displayDateFormat } from "@/lib/locale";
 import { parseProductId, productBase } from "@/lib/productUrl";
 import {
   domainFromName,
@@ -99,10 +100,9 @@ const CHECK_DURATION_S = 8;
 // ---------------------------------------------------------------------------
 
 function todayShort(): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-  }).format(new Date());
+  return displayDateFormat({ day: "numeric", month: "short" }).format(
+    new Date(),
+  );
 }
 
 function withStoredView(state: AppState, productId: string | null): AppState {
@@ -1234,7 +1234,7 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
                 email: "faith@discoveree.com",
                 expires: notice.expires,
                 keyMask: "DSCV-••••-••••-9F2K",
-                enteredOn: new Intl.DateTimeFormat("en-GB", {
+                enteredOn: displayDateFormat({
                   day: "numeric",
                   month: "short",
                   year: "numeric",
@@ -1548,7 +1548,7 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
           return;
         }
         setState((prev) => {
-          const today = new Intl.DateTimeFormat("en-GB", {
+          const today = displayDateFormat({
             day: "numeric",
             month: "short",
           }).format(new Date());

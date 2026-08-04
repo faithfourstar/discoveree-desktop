@@ -13,6 +13,7 @@
 import { callLLM } from "../../../lib/llm/router.js";
 import { sanitizeJsonResponse } from "../../../lib/llm/json.js";
 import { AgentSlugs } from "../../../lib/agents/slugs.js";
+import { getSynthesisLanguageInstruction } from "../../../lib/settings/preferences.js";
 import type { EvidenceItem, EvidenceRef } from "../evidence.js";
 import { segmentInsightsOutputSchema, type SegmentInsightsOutput } from "../schemas.js";
 
@@ -82,6 +83,8 @@ HARD RULES:
 - NEVER invent customers, quotes, statistics, satisfaction scores, or market facts.
 - Do NOT estimate CSAT or NPS — those fields do not exist in your output.
 - Return fewer claims, or none, rather than pad. An empty result on thin evidence is correct.
+
+${await getSynthesisLanguageInstruction(organizationId)}
 
 Respond with ONLY a valid JSON object matching the schema.`;
 

@@ -57,6 +57,13 @@ export interface RichSegment {
   tone?: "link" | "stale" | "mono";
   /** Stable context-object ID the segment points at, when it is a link. */
   objectId?: string;
+  /**
+   * Display-locale boundary (lib/locale.ts): true marks the segment as DATA
+   * (mined verbatims, agent-stored prose, object names) — never run through
+   * the copy transform. Segments with an objectId or tone "mono" are treated
+   * as data automatically.
+   */
+  data?: boolean;
 }
 
 export type RichText = readonly RichSegment[];

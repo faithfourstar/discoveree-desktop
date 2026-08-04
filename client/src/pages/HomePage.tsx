@@ -1,6 +1,7 @@
 import { EvidenceRow } from "@/components/EvidenceChip";
 import { RichText } from "@/components/RichText";
 import { useAppState } from "@/state/AppStateContext";
+import { useT } from "@/state/locale";
 import type { BriefingItem, DayOnePrompt, HomeBriefing } from "@/mock/types";
 
 function BriefingRow({ item, index }: { item: BriefingItem; index: number }) {
@@ -87,11 +88,12 @@ function Briefing({ home }: { home: HomeBriefing }) {
 }
 
 function DayOne({ prompt }: { prompt: DayOnePrompt }) {
+  const t = useT();
   return (
     <div className="flex min-h-full items-center justify-center px-8">
       <div className="w-full max-w-[600px]">
         <p className="mb-[26px] text-[23px] leading-[1.45] tracking-[-0.015em] text-ink [text-wrap:pretty]">
-          {prompt.lede}
+          {t(prompt.lede)}
         </p>
         <div className="mb-3.5 flex gap-2.5">
           <input
@@ -108,7 +110,7 @@ function DayOne({ prompt }: { prompt: DayOnePrompt }) {
           </button>
         </div>
         <p className="text-[12.5px] leading-[1.65] text-faint">
-          {prompt.helper}
+          {t(prompt.helper)}
         </p>
       </div>
     </div>

@@ -22,6 +22,11 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:4517",
     trace: "retain-on-failure",
+    // The specs assert authored (British) copy verbatim. Playwright's
+    // default browser locale is en-US, which the display-locale seam would
+    // render as American English — pin the browser to en-GB so the copy
+    // assertions stay deterministic (the locale pin for the suite).
+    locale: "en-GB",
   },
   projects: [{ name: "mock", use: { ...devices["Desktop Chrome"] } }],
   webServer: {

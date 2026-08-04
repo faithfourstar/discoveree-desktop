@@ -12,6 +12,7 @@ import {
   parseSettingsAnchor,
   type SettingsAnchor,
 } from "@/lib/anchors";
+import { isDisplayLocaleSetting } from "@/lib/locale";
 import { useProductHref } from "@/lib/productUrl";
 import { countNoun } from "@/lib/text";
 import { formatElapsed } from "@/mock/competitors";
@@ -28,6 +29,7 @@ import {
   type ProviderMeta,
 } from "@/mock/settings";
 import { useAppActions, useAppState } from "@/state/AppStateContext";
+import { useDisplayLocale, useT } from "@/state/locale";
 import type {
   AgentScheduleRow,
   LicenceState,
@@ -61,9 +63,10 @@ function Fig({ children }: { children: ReactNode }) {
 }
 
 function Kicker({ children }: { children: ReactNode }) {
+  const t = useT();
   return (
     <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.09em] text-label">
-      {children}
+      {typeof children === "string" ? t(children) : children}
     </span>
   );
 }
@@ -113,16 +116,19 @@ function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const t = useT();
   return (
     <div
       className="fixed inset-0 z-20 flex items-center justify-center bg-black/30 px-6"
       role="dialog"
       aria-modal="true"
-      aria-label={title}
+      aria-label={t(title)}
     >
       <div className="w-full max-w-[420px] rounded-[12px] border border-edge bg-surface p-6 shadow-lg">
-        <h2 className="mb-2 text-[15.5px] font-semibold text-ink">{title}</h2>
-        <p className="mb-5 text-[13.5px] leading-[1.6] text-body">{body}</p>
+        <h2 className="mb-2 text-[15.5px] font-semibold text-ink">
+          {t(title)}
+        </h2>
+        <p className="mb-5 text-[13.5px] leading-[1.6] text-body">{t(body)}</p>
         <div className="flex justify-end gap-3">
           <button
             type="button"
@@ -136,7 +142,7 @@ function ConfirmDialog({
             onClick={onConfirm}
             className="rounded-[8px] bg-red-600 px-3.5 py-2 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90"
           >
-            {confirmLabel}
+            {t(confirmLabel)}
           </button>
         </div>
       </div>
@@ -234,6 +240,7 @@ function SettingsLede({
   settings: SettingsState;
   goTo: (anchor: SettingsAnchor) => void;
 }) {
+  const t = useT();
   const anyKey = hasAnyKey(settings.llmKeys);
   const pausedAll = settings.schedules.pausedAll;
   const licence = settings.licence;
@@ -242,27 +249,29 @@ function SettingsLede({
   if (!anyKey) {
     clause = (
       <AmberClause onClick={() => goTo("llm-keys")}>
-        Agents are paused until you add an LLM key.
+        {t("Agents are paused until you add an LLM key.")}
       </AmberClause>
     );
   } else if (pausedAll) {
     clause = (
       <AmberClause onClick={() => goTo("agent-schedules")}>
-        You’ve paused the agents — nothing is being checked, and stamps are
-        ageing.
+        {t(
+          "You’ve paused the agents — nothing is being checked, and stamps are ageing.",
+        )}
       </AmberClause>
     );
   } else if (licence.kind === "readingOnly") {
     clause = (
       <>
-        Discoveree is reading-only just now — your context is safe and served,
-        and edits resume with{" "}
+        {t(
+          "Discoveree is reading-only just now — your context is safe and served, and edits resume with",
+        )}{" "}
         <button
           type="button"
           onClick={() => goTo("licence")}
           className="text-teal-deep hover:underline"
         >
-          a licence
+          {t("a licence")}
         </button>
         .
       </>
@@ -304,7 +313,7 @@ function SettingsLede({
 
   return (
     <p className="text-[21px] leading-[1.5] tracking-[-0.01em] text-ink [text-wrap:pretty]">
-      Everything here stays on this machine. {clause}
+      {t("Everything here stays on this machine.")} {clause}
     </p>
   );
 }
@@ -643,6 +652,7 @@ function ProviderRow({
 }
 
 function LlmKeysBlock({ settings }: { settings: SettingsState }) {
+  const t = useT();
   const rows = settings.llmKeys;
   const savedCount = rows.filter((row) => row.saved).length;
   const searchCount = rows.filter((row) => row.webSearch && row.saved).length;
@@ -653,15 +663,14 @@ function LlmKeysBlock({ settings }: { settings: SettingsState }) {
         <Kicker>LLM keys</Kicker>
       </div>
       <p className="mb-2 text-[15px] leading-[1.6] text-ink">
-        One key from any provider is enough. The router picks the best
-        available model for each job and falls back across providers
-        automatically — more keys just mean more fallback.
+        {t(
+          "One key from any provider is enough. The router picks the best available model for each job and falls back across providers automatically — more keys just mean more fallback.",
+        )}
       </p>
       <p className="mb-5 text-[12.5px] leading-[1.65] text-faint">
-        Keys are encrypted and stored only on this machine, inside your local
-        database. They are sent to exactly one place: the provider they belong
-        to, when an agent makes a call. There is no Discoveree server for them
-        to go to.
+        {t(
+          "Keys are encrypted and stored only on this machine, inside your local database. They are sent to exactly one place: the provider they belong to, when an agent makes a call. There is no Discoveree server for them to go to.",
+        )}
       </p>
       <div>
         {rows.map((row) => (
@@ -675,8 +684,9 @@ function LlmKeysBlock({ settings }: { settings: SettingsState }) {
       </div>
       {!hasSearchKey(rows) ? (
         <p className="mt-4 text-[13px] leading-[1.6] text-amber-600 dark:text-amber-400">
-          Your agents can think but not search — reviews and market news are
-          paused until you add an OpenAI, Google, Perplexity or OpenRouter key.
+          {t(
+            "Your agents can think but not search — reviews and market news are paused until you add an OpenAI, Google, Perplexity or OpenRouter key.",
+          )}
         </p>
       ) : null}
     </>
@@ -731,6 +741,7 @@ function AgentRow({
 }) {
   const actions = useAppActions();
   const productHref = useProductHref();
+  const t = useT();
   const [menuOpen, setMenuOpen] = useState(false);
   const [pausedNote, setPausedNote] = useState(false);
   const menuRef = useRef<HTMLSpanElement | null>(null);
@@ -807,7 +818,7 @@ function AgentRow({
             Run now
           </button>
         ) : capabilities.runNow && perObject ? (
-          <span className="text-[12px] text-ghost">{PER_OBJECT_NOTE}</span>
+          <span className="text-[12px] text-ghost">{t(PER_OBJECT_NOTE)}</span>
         ) : null}
         <span className="ml-auto flex items-baseline gap-2.5">
           {row.frequency === "after-gathering" ? (
@@ -820,7 +831,8 @@ function AgentRow({
               ariaLabel={`${row.name} frequency`}
               options={EDITABLE_FREQUENCIES.map((frequency) => ({
                 value: frequency,
-                label: FREQUENCY_LABELS[frequency],
+                // "fortnightly" renders "every 2 weeks" under en-US.
+                label: t(FREQUENCY_LABELS[frequency]),
               }))}
               onChange={(value) =>
                 actions.setAgentFrequency(
@@ -1268,17 +1280,19 @@ function LicenceKeyEntry({ onClose }: { onClose: () => void }) {
 }
 
 function BuyButton({ label }: { label: string }) {
+  const t = useT();
   return (
     <ExternalLink
       href={BUY_URL}
       className="inline-block rounded-[9px] bg-teal px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
     >
-      {label}
+      {t(label)}
     </ExternalLink>
   );
 }
 
 function LicenceBlock({ settings }: { settings: SettingsState }) {
+  const t = useT();
   const licence: LicenceState = settings.licence;
   const notice = settings.licenceNotice;
   const [entryOpen, setEntryOpen] = useState(false);
@@ -1305,12 +1319,12 @@ function LicenceBlock({ settings }: { settings: SettingsState }) {
       {licence.kind === "trial" ? (
         <>
           <p className="text-[15px] leading-[1.65] text-ink">
-            You’re trying the full product — everything on, nothing held back,{" "}
+            {t("You’re trying the full product — everything on, nothing held back,")}{" "}
             <Fig>{licence.daysLeft}</Fig>{" "}
-            {licence.daysLeft === 1 ? "day" : "days"} to go. After that,
-            Discoveree becomes a free reader of the context you’ve built:
-            everything stays readable here and over MCP, but agents and edits
-            wait for a licence.
+            {licence.daysLeft === 1 ? "day" : "days"}{" "}
+            {t(
+              "to go. After that, Discoveree becomes a free reader of the context you’ve built: everything stays readable here and over MCP, but agents and edits wait for a licence.",
+            )}
           </p>
           <div className="mt-4 flex items-center gap-4">
             <BuyButton label="Buy a licence ↗" />
@@ -1340,7 +1354,7 @@ function LicenceBlock({ settings }: { settings: SettingsState }) {
             {licence.renewalDue ? (
               <>
                 {" "}
-                Renewing keeps agents running and updates coming —{" "}
+                {t("Renewing keeps agents running and updates coming —")}{" "}
                 <ExternalLink
                   href={BUY_URL}
                   className="font-medium text-teal-deep hover:underline"
@@ -1363,8 +1377,7 @@ function LicenceBlock({ settings }: { settings: SettingsState }) {
             ) : null}
           </div>
           <p className="mt-2 text-[12.5px] leading-[1.65] text-faint">
-            Your key is checked on this machine — Discoveree doesn’t phone
-            home.
+            {t("Your key is checked on this machine — Discoveree doesn’t phone home.")}
           </p>
         </>
       ) : (
@@ -1372,16 +1385,16 @@ function LicenceBlock({ settings }: { settings: SettingsState }) {
           <p className="text-[15px] leading-[1.65] text-ink">
             {licence.reason === "trial" ? (
               <>
-                Your trial ended on <Fig>{licence.endedOn}</Fig>.
+                {t("Your trial ended on")} <Fig>{licence.endedOn}</Fig>.
               </>
             ) : (
               <>
-                Your licence expired on <Fig>{licence.endedOn}</Fig>.
+                {t("Your licence expired on")} <Fig>{licence.endedOn}</Fig>.
               </>
             )}{" "}
-            Nothing you made has been taken away — your context is safe on
-            this machine, readable here and served over MCP. Agents and edits
-            resume with a licence.
+            {t(
+              "Nothing you made has been taken away — your context is safe on this machine, readable here and served over MCP. Agents and edits resume with a licence.",
+            )}
           </p>
           <div className="mt-4 flex items-center gap-4">
             <BuyButton
@@ -1453,9 +1466,50 @@ function AboutRow({
   );
 }
 
+/**
+ * The Language row — the display-locale control (build brief "Display
+ * locale"): Auto (detected) / British English / American English, persisted
+ * via the preferences endpoint. Copy stays authored in British English; the
+ * app renders the chosen variety.
+ */
+function LanguageRow() {
+  const { setting, detected, overridden, setSetting } = useDisplayLocale();
+  const autoLabel = `Auto (${
+    detected === "en-GB" ? "British English" : "American English"
+  })`;
+  return (
+    <AboutRow
+      label="Language"
+      value={
+        overridden ? (
+          <span className="font-mono text-xs text-faint">
+            forced by ?locale= for this session
+          </span>
+        ) : (
+          <QuietSelect
+            value={setting}
+            ariaLabel="Language"
+            options={[
+              { value: "auto", label: autoLabel },
+              { value: "en-GB", label: "British English" },
+              { value: "en-US", label: "American English" },
+            ]}
+            onChange={(value) => {
+              if (isDisplayLocaleSetting(value)) {
+                setSetting(value);
+              }
+            }}
+          />
+        )
+      }
+    />
+  );
+}
+
 function AboutBlock({ settings }: { settings: SettingsState }) {
   const actions = useAppActions();
   const productHref = useProductHref();
+  const t = useT();
   const about = settings.about;
   if (!about) {
     return null;
@@ -1469,9 +1523,9 @@ function AboutBlock({ settings }: { settings: SettingsState }) {
         <Kicker>About &amp; your data</Kicker>
       </div>
       <p className="mb-4 text-[15px] leading-[1.6] text-ink">
-        Discoveree keeps everything on this machine — one folder holds the
-        database, files and settings. Back that folder up and you’ve backed up
-        Discoveree.
+        {t(
+          "Discoveree keeps everything on this machine — one folder holds the database, files and settings. Back that folder up and you’ve backed up Discoveree.",
+        )}
       </p>
       <div>
         <AboutRow
@@ -1530,11 +1584,12 @@ function AboutBlock({ settings }: { settings: SettingsState }) {
             ) : undefined
           }
         />
+        <LanguageRow />
         <AboutRow
           label="Sources"
           value={
             <span className="text-[13px] italic text-faint">
-              Everything agents believe, and why
+              {t("Everything agents believe, and why")}
             </span>
           }
           action={
@@ -1547,7 +1602,7 @@ function AboutBlock({ settings }: { settings: SettingsState }) {
           }
         />
         <AboutRow
-          label="Licence terms"
+          label={t("Licence terms")}
           value={
             <span className="font-mono text-xs text-faint">
               source-available · FSL
@@ -1558,7 +1613,7 @@ function AboutBlock({ settings }: { settings: SettingsState }) {
               href={LICENCE_TERMS_URL}
               className="text-[12.5px] font-medium text-teal-deep hover:underline"
             >
-              Read the licence ↗
+              {t("Read the licence ↗")}
             </ExternalLink>
           }
         />

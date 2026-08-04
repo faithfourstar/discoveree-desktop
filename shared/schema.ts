@@ -1445,6 +1445,15 @@ export const scheduleFrequencySchema = z.enum([
   "off",
 ]);
 
+/**
+ * Display locale (Settings preferences contract). "auto" means the CLIENT
+ * resolves the locale from its environment; the server treats a stored
+ * "auto" (or nothing stored) as en-GB for its own work — scheduled agent
+ * runs synthesise in British English until a client has stored a concrete
+ * resolution.
+ */
+export const displayLocaleSchema = z.enum(["auto", "en-GB", "en-US"]);
+
 export const organizationSettingsSchema = z.object({
   scheduling: z
     .object({
@@ -1454,11 +1463,18 @@ export const organizationSettingsSchema = z.object({
       frequencies: z.record(z.string(), scheduleFrequencySchema).default({}),
     })
     .default({ pausedAll: false, frequencies: {} }),
+  preferences: z
+    .object({
+      displayLocale: displayLocaleSchema.default("auto"),
+    })
+    .default({ displayLocale: "auto" }),
 });
 
 export type ScheduleFrequency = z.infer<typeof scheduleFrequencySchema>;
+export type DisplayLocale = z.infer<typeof displayLocaleSchema>;
 export type OrganizationSettings = z.infer<typeof organizationSettingsSchema>;
 export type OrgSchedulingSettings = OrganizationSettings["scheduling"];
+export type OrgPreferences = OrganizationSettings["preferences"];
 
 // LLM API Keys update schema (for API input - accepts plain text keys)
 export const llmApiKeysUpdateSchema = z.object({

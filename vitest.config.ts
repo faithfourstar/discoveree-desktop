@@ -11,7 +11,12 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["server/**/*.test.ts", "shared/**/*.test.ts"],
+    include: [
+      "server/**/*.test.ts",
+      "shared/**/*.test.ts",
+      // Pure client modules only (no DOM): the display-locale dictionary.
+      "client/src/lib/__tests__/**/*.test.ts",
+    ],
     // PGlite (WASM) can be slow to boot on CI runners.
     testTimeout: 30_000,
     hookTimeout: 30_000,

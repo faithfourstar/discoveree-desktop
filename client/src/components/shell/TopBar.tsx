@@ -1,6 +1,7 @@
 import { Check, ChevronsUpDown, Moon, Sun } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
+import { displayDateFormat } from "@/lib/locale";
 import {
   productSubpath,
   switchProductLocation,
@@ -162,7 +163,7 @@ function ProductSwitcher() {
 }
 
 function formatToday(): string {
-  return new Intl.DateTimeFormat("en-GB", {
+  return displayDateFormat({
     weekday: "short",
     day: "numeric",
     month: "short",

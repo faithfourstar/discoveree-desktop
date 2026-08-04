@@ -6,6 +6,8 @@
  *   POST /api/settings/llm-keys/test   → one cheap provider call to validate
  *   GET  /api/settings/agent-schedules → pause-all + audience-named agent rows
  *   PUT  /api/settings/agent-schedules → persist pause-all / frequencies; same shape back
+ *   GET  /api/settings/preferences     → { displayLocale: "auto" | "en-GB" | "en-US" }
+ *   PUT  /api/settings/preferences     → persist displayLocale; same shape back
  *   GET  /api/settings/about           → data dir, DB size, version, port
  *
  * llm-keys PUT semantics per field: omitted = unchanged, null = cleared,
@@ -15,11 +17,12 @@
 import type { Express } from "express";
 import { Router } from "express";
 import { z } from "zod/v4";
-import { scheduleFrequencySchema, type Organization } from "@shared/schema";
+import { displayLocaleSchema, scheduleFrequencySchema, type Organization } from "@shared/schema";
 import { asyncHandler } from "../../http/asyncHandler.js";
 import { BadRequestError } from "../../http/errors.js";
 import { encrypt, maskApiKey } from "../../lib/secrets.js";
 import { getDecryptedOrgKeys, getOrganization, updateOrganization } from "../../lib/llm/keys.js";
+import { getOrgPreferences, updateOrgPreferences } from "../../lib/settings/preferences.js";
 import { clearLlmClientCaches } from "../../lib/llm/router.js";
 import { getAboutInfo } from "./about.js";
 import { getAgentSchedulesView, updateAgentSchedules } from "./schedules.js";
@@ -42,6 +45,10 @@ const putAgentSchedulesBodySchema = z.object({
       frequency: scheduleFrequencySchema,
     }))
     .optional(),
+});
+
+const putPreferencesBodySchema = z.object({
+  displayLocale: displayLocaleSchema,
 });
 
 const testLlmKeyBodySchema = z.object({
@@ -138,6 +145,17 @@ export function registerSettingsRoutes(app: Express): void {
   router.put("/settings/agent-schedules", asyncHandler(async (req, res) => {
     const body = putAgentSchedulesBodySchema.parse(req.body);
     res.json(await updateAgentSchedules(req.ctx.organizationId, body));
+  }));
+
+  router.get("/settings/preferences", asyncHandler(async (req, res) => {
+    res.json(await getOrgPreferences(req.ctx.organizationId));
+  }));
+
+  // "auto" is a legitimate stored value (client-resolved display); the
+  // server itself resolves "auto" to en-GB — see lib/settings/preferences.
+  router.put("/settings/preferences", asyncHandler(async (req, res) => {
+    const body = putPreferencesBodySchema.parse(req.body);
+    res.json(await updateOrgPreferences(req.ctx.organizationId, body));
   }));
 
   router.get("/settings/about", asyncHandler(async (_req, res) => {
