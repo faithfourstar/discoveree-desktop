@@ -33,6 +33,14 @@ Why desktop strengthens this rather than weakening it:
 - **Prerequisites:** Apple Developer Program ($99/yr) + notarisation for macOS; Windows code signing (Azure Trusted Signing ~$10/mo). Unsigned apps don't convert.
 - Value anchor when marketing: replaces Klue/Crayon-class competitive-intelligence SaaS ($12k–60k+/yr contracts), not desktop utilities. Customer's total cost = $199/seat + their own LLM spend.
 
+## 2a. Launch growth mechanics — in-product surfaces (decided 4 Aug 2026)
+
+The website (built by Faith in Lovable) carries a launch-offer banner, a referral section, a user-review wall, and an organisation counter. Three of these need product-side support:
+
+1. **In-app review ask.** Reviews are requested **after a value moment, never before download** — a review of an unused product is worthless and reads as bought. Trigger candidates (pick in design): first accepted roadmap suggestion, first accepted competitor proposal, or N days of active use (~14), whichever comes first; fire once, dismissible, never nags again. The ask deep-links to the website review form (built in Lovable — no in-app review storage). Form requirements agreed: name, role/company, star rating, review text, optional "what do you use it for"/"which AI tools", publication-consent checkbox, and a **separate opt-in checkbox for showing the organisation's logo** on the site (logo permission must not be bundled into the general publication consent). Compliance (UK DMCC 2024 / FTC): launch-offer reviews are incentivised, so the site discloses the incentive wherever reviews appear, asks are for *honest* reviews, and moderation removes spam only — never sentiment. If a review is a formal condition of the launch offer it must be stated in the offer terms; the current intent is a warm request, not a condition.
+2. **Referral surface.** "Recommend Discoveree" appears in-app at the same value moments (and in Settings), sharing the website referral link. Incentive structure still undecided (goodwill vs give-a-month/get-a-month — check MoR coupon support before promising anything).
+3. **Organisation counter.** The website shows "X organisations building their context layer". **Source of truth is licence issuance, not the app**: paid seats + launch-offer keys from the merchant-of-record, deduplicated by organisation. The app must NOT phone home for this — §2's licence check is explicitly offline/no-phone-home, and "your data never leaves your machine" is the headline security claim; runtime telemetry would contradict it. (If a "currently using" signal is ever wanted, it's a separate, explicit, default-off opt-in — not part of this counter.) Counter mechanics live entirely in the website/MoR webhook layer; the desktop app's only involvement is none.
+
 ## 3. Module map
 
 Test applied to every feature: **does it create or serve context, or consume it?** Creators/servers stay. Consumers are what the customer's AI does via MCP — with one deliberate exception (Roadmap Review & Suggestions, see §4).
@@ -177,6 +185,7 @@ Build in a **fresh public GitHub repo, not a fork**:
 **Constraints for all agents:**
 - All user-facing copy in **British English** (see `design_guidelines.md` for the substitution table). Design system: shadcn/ui "New York", Inter + JetBrains Mono, light/dark modes.
 - AI-generated data validated with Zod; agents follow "merge, don't replace" on refresh.
+- **No evidence, no assertion (decided 4 Aug 2026 — owner-reported SaaS defect):** the SaaS hallucinates personas/JTBD from the product description alone. In the desktop edition, customer-knowledge outputs (personas, JTBD, segment insights) are generated only from actual evidence (feedback, mined reviews, owner-provided knowledge, uploaded documents), with output schemas REQUIRING evidence references — uncited output fails validation and is not stored. Owner-asserted knowledge is a legitimate labelled source kind ("owner-provided"), never dressed as research. No-evidence states render as invitations, never fabrications.
 - Suggestions/actions that write to external tools are always evidence-cited and human-accepted.
 
 ## 10a. Positioning: "why not just a Claude project with schedules and an artifact dashboard?"
