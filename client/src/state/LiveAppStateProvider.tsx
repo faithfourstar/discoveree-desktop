@@ -1,18 +1,27 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import {
+  aboutFromServer,
+  agentRowFromServer,
   api,
   ApiError,
   changeClause,
+  classifyKeyTest,
   freshSinceLabel,
+  llmKeyRowsFromServer,
   objectFromDetail,
   objectFromRow,
   proposalFromDetail,
+  providerKeyField,
+  providerToServer,
   rowFromCard,
   threatToServer,
+  type KeyTestOutcome,
   type ServerActiveRun,
+  type ServerAgentSchedules,
   type ServerCompetitorCard,
   type ServerFeedChange,
+  type ServerLlmKeysView,
   type ServerProduct,
 } from "@/lib/api";
 import { parseProductId, productBase } from "@/lib/productUrl";
@@ -27,11 +36,23 @@ import {
   orderRows,
   type LedeHighlight,
 } from "@/mock/competitors";
+import {
+  earliestNextRun,
+  isWellFormedLicenceKey,
+  makeMask,
+  normaliseLicenceKey,
+} from "@/mock/settings";
 import type {
+  AboutInfo,
   AddStage,
+  AgentFrequency,
   AppState,
   CompetitorChecking,
   CompetitorRow,
+  LicenceState,
+  LlmKeyRow,
+  ProviderId,
+  SettingsState,
 } from "@/mock/types";
 import { AppStateBridge, type AppActions } from "./appStateCore";
 
@@ -51,6 +72,14 @@ import { AppStateBridge, type AppActions } from "./appStateCore";
 const POLL_MS = 3000;
 const OFFLINE_RETRY_MS = 8000;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Static trial placeholder — there is no licensing server yet; the future
+ * licensing sprint replaces this with real key state (settings-spec part 6,
+ * 14-day trial decided).
+ */
+const TRIAL_PLACEHOLDER: LicenceState = { kind: "trial", daysLeft: 14 };
+const TRIAL_FOOTER = "Trial · 14 days left";
 
 function storedView(productId: string | null): "cards" | "table" {
   if (!productId) {
@@ -123,6 +152,7 @@ function makeLiveBaseState(): AppState {
     competitors: {},
     competitorAddFlow: { ...initialAddFlow },
     onboardingProposals: null,
+    settings: null,
     agentsPaused: false,
     justVerifiedId: null,
   };
@@ -190,6 +220,16 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
   const tintTimerRef = useRef<number | null>(null);
   const detailLoadedRef = useRef<Set<string>>(new Set());
   const mountedRef = useRef(true);
+
+  // Settings (org-scoped: loaded once, independent of the product dimension).
+  const keysViewRef = useRef<ServerLlmKeysView | null>(null);
+  const schedulesRef = useRef<ServerAgentSchedules | null>(null);
+  const aboutRef = useRef<AboutInfo | null>(null);
+  /** Providers whose key could not be verified this session (2.4). */
+  const unverifiedKeysRef = useRef<Set<ProviderId>>(new Set());
+  const keyTickTimerRef = useRef<number | null>(null);
+  const settingsTimersRef = useRef<number[]>([]);
+  const settingsRetryTimerRef = useRef<number | null>(null);
 
   const actions = useMemo<AppActions>(() => {
     // ── Recompose helpers (refs → state) ──────────────────────────────────
@@ -292,8 +332,27 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         const names = checking.map((entry) => entry.name).join(" and ");
         return { agents: `Agents · checking ${names}`, agentsLive: true };
       }
-      return { agents: "Agents idle", agentsLive: false };
+      const schedules = schedulesRef.current;
+      if (schedules?.pausedAll) {
+        // Pausing is a choice, not a failure — default colouring (spec 3.4).
+        return { agents: "Agents · paused by you", agentsLive: false };
+      }
+      const next = schedules
+        ? earliestNextRun(schedules.agents.map(agentRowFromServer))
+        : undefined;
+      return {
+        agents: next?.nextRun
+          ? `Agents idle · next run ${next.nextRun}`
+          : "Agents idle",
+        agentsLive: false,
+      };
     };
+
+    /** The footer's Local segment — the db size once About has loaded. */
+    const composeFooterLocal = (): string =>
+      aboutRef.current
+        ? `Local · ${aboutRef.current.dbSizeOnDisk} on disk`
+        : "Local · 127.0.0.1:7317";
 
     const composeAddFlowStages = (): readonly AddStage[] | null => {
       const run = proposalRunRef.current;
@@ -384,7 +443,7 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
           ...prev,
           footer: {
             ...prev.footer,
-            local: "Local · 127.0.0.1:7317",
+            local: composeFooterLocal(),
             agents,
             agentsLive,
           },
@@ -840,9 +899,437 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
       }
     };
 
+    // ── Settings (org-scoped) ─────────────────────────────────────────────
+
+    const scheduleSettingsTimer = (delay: number, run: () => void) => {
+      const timer = window.setTimeout(run, delay);
+      settingsTimersRef.current.push(timer);
+    };
+
+    /**
+     * Rebuild settings from the server refs, carrying over per-row transient
+     * UI state (elapsed counters, verdicts, pause memory) and any licence
+     * notice — server truth for the data, client truth for the in-flight UI.
+     */
+    const applySettings = () => {
+      if (!mountedRef.current) {
+        return;
+      }
+      setState((prev) => {
+        const keysView = keysViewRef.current;
+        if (!keysView) {
+          return prev;
+        }
+        const rows = (schedulesRef.current?.agents ?? []).map((agent) => {
+          const row = agentRowFromServer(agent);
+          const prevRow = prev.settings?.schedules.rows.find(
+            (candidate) => candidate.id === row.id,
+          );
+          if (prevRow?.running) {
+            row.running = prevRow.running;
+          }
+          if (row.frequency === "off" && prevRow?.pausedFrom) {
+            row.pausedFrom = prevRow.pausedFrom;
+          }
+          return row;
+        });
+        const llmKeys = llmKeyRowsFromServer(
+          keysView,
+          unverifiedKeysRef.current,
+        ).map((row) => {
+          const prevRow = prev.settings?.llmKeys.find(
+            (candidate) => candidate.provider === row.provider,
+          );
+          if (!prevRow) {
+            return row;
+          }
+          const next: LlmKeyRow = { ...row };
+          if (prevRow.testing) {
+            next.testing = prevRow.testing;
+          }
+          if (prevRow.testResult) {
+            next.testResult = prevRow.testResult;
+          }
+          if (next.saved && prevRow.saved?.lastUsedAgo) {
+            next.saved = {
+              ...next.saved,
+              lastUsedAgo: prevRow.saved.lastUsedAgo,
+            };
+          }
+          return next;
+        });
+        const settings: SettingsState = {
+          llmKeys,
+          schedules: {
+            pausedAll: schedulesRef.current?.pausedAll ?? false,
+            rows,
+          },
+          capabilities: {
+            // Contract gaps (flagged in the sprint report): no run-now
+            // endpoint, no weekly day/time fields. Per-agent pause exists
+            // as frequency "off", so its controls render once schedules load.
+            runNow: false,
+            perAgentPause: schedulesRef.current !== null,
+            editWeeklyAt: false,
+          },
+          // No connections summary endpoint yet — the block invites.
+          connections: { serving: [], checking: [] },
+          licence: TRIAL_PLACEHOLDER,
+          about: aboutRef.current,
+          ...(prev.settings?.licenceNotice
+            ? { licenceNotice: prev.settings.licenceNotice }
+            : {}),
+        };
+        const { agents, agentsLive } = composeFooterAgents(
+          prev.competitorsOverview?.checking ?? [],
+        );
+        return {
+          ...prev,
+          settings,
+          footer: {
+            ...prev.footer,
+            local: composeFooterLocal(),
+            agents,
+            agentsLive,
+            licence: TRIAL_FOOTER,
+          },
+        };
+      });
+    };
+
+    const updateLiveKeyRow = (
+      provider: ProviderId,
+      update: (row: LlmKeyRow) => LlmKeyRow,
+    ) => {
+      setState((prev) =>
+        prev.settings
+          ? {
+              ...prev,
+              settings: {
+                ...prev.settings,
+                llmKeys: prev.settings.llmKeys.map((row) =>
+                  row.provider === provider ? update(row) : row,
+                ),
+              },
+            }
+          : prev,
+      );
+    };
+
+    const stopKeyTicker = () => {
+      if (keyTickTimerRef.current !== null) {
+        window.clearInterval(keyTickTimerRef.current);
+        keyTickTimerRef.current = null;
+      }
+    };
+
+    const ensureKeyTicker = () => {
+      if (keyTickTimerRef.current !== null) {
+        return;
+      }
+      keyTickTimerRef.current = window.setInterval(() => {
+        const anyTesting = stateRef.current.settings?.llmKeys.some(
+          (row) => row.testing,
+        );
+        if (!anyTesting) {
+          stopKeyTicker();
+          return;
+        }
+        setState((prev) =>
+          prev.settings
+            ? {
+                ...prev,
+                settings: {
+                  ...prev.settings,
+                  llmKeys: prev.settings.llmKeys.map((row) =>
+                    row.testing
+                      ? {
+                          ...row,
+                          testing: { elapsedS: row.testing.elapsedS + 1 },
+                        }
+                      : row,
+                  ),
+                },
+              }
+            : prev,
+        );
+      }, 1000);
+    };
+
+    /** Apply a test outcome to the row (honest-verdict rules, spec 2.4). */
+    const settleKeyTest = (
+      provider: ProviderId,
+      outcome: KeyTestOutcome,
+      answeredInS: number,
+    ) => {
+      const works = outcome.kind === "works";
+      if (works) {
+        unverifiedKeysRef.current.delete(provider);
+      } else {
+        unverifiedKeysRef.current.add(provider);
+      }
+      updateLiveKeyRow(provider, (row) => {
+        const next: LlmKeyRow = { ...row };
+        delete next.testing;
+        next.testResult = works
+          ? { kind: "works", answeredInS }
+          : outcome;
+        if (next.saved) {
+          next.saved = {
+            ...next.saved,
+            verified: works,
+            ...(works ? { lastUsedAgo: "just now" } : {}),
+          };
+        }
+        return next;
+      });
+      if (works) {
+        // The ✓ settles back to the normal key line after 5 s.
+        scheduleSettingsTimer(5000, () => {
+          updateLiveKeyRow(provider, (row) => {
+            if (row.testResult?.kind !== "works") {
+              return row;
+            }
+            const next = { ...row };
+            delete next.testResult;
+            return next;
+          });
+        });
+      }
+    };
+
+    const runKeyTest = async (provider: ProviderId): Promise<void> => {
+      const started = Date.now();
+      try {
+        const result = await api.testLlmKey({
+          provider: providerToServer(provider),
+        });
+        settleKeyTest(
+          provider,
+          classifyKeyTest(result),
+          Math.max(0.1, (Date.now() - started) / 1000),
+        );
+      } catch {
+        // Could not reach the LOCAL server to run the test — still no
+        // verdict on the key.
+        settleKeyTest(provider, { kind: "unreachable" }, 0);
+      }
+    };
+
+    const loadSettings = async () => {
+      try {
+        // Keys are the gate; schedules/about arrive on their own contracts
+        // and degrade independently while the parallel server work lands.
+        const [keys, schedules, about] = await Promise.all([
+          api.getLlmKeys(),
+          api.getAgentSchedules().catch(() => null),
+          api.getAbout().catch(() => null),
+        ]);
+        keysViewRef.current = keys;
+        schedulesRef.current = schedules;
+        aboutRef.current = about ? aboutFromServer(about) : null;
+        applySettings();
+      } catch {
+        if (settingsRetryTimerRef.current !== null) {
+          window.clearTimeout(settingsRetryTimerRef.current);
+        }
+        settingsRetryTimerRef.current = window.setTimeout(() => {
+          void loadSettings();
+        }, OFFLINE_RETRY_MS);
+      }
+    };
+
+    const putFrequency = (id: string, frequency: string) => {
+      void (async () => {
+        try {
+          const res = await api.putAgentSchedules({
+            agents: [{ slug: id, frequency }],
+          });
+          schedulesRef.current = res;
+          applySettings();
+        } catch {
+          // Reconcile with server truth — the optimistic stamp reverts.
+          applySettings();
+        }
+      })();
+    };
+
+    const settingsLive = {
+      saveLlmKey: (provider: ProviderId, key: string) => {
+        const typed = key.trim();
+        if (!typed) {
+          return;
+        }
+        updateLiveKeyRow(provider, (row) => {
+          const next: LlmKeyRow = {
+            ...row,
+            // Optimistic mask until the server's masked view returns.
+            saved: { mask: makeMask(provider, typed), verified: false },
+            testing: { elapsedS: 0 },
+          };
+          delete next.testResult;
+          return next;
+        });
+        ensureKeyTicker();
+        void (async () => {
+          try {
+            const view = await api.putLlmKeys({
+              [providerKeyField(provider)]: typed,
+            });
+            keysViewRef.current = view;
+            unverifiedKeysRef.current.add(provider);
+            applySettings();
+          } catch {
+            // The save itself failed (local server) — revert to server truth
+            // rather than pretending the key was stored.
+            updateLiveKeyRow(provider, (row) => {
+              const next = { ...row };
+              delete next.testing;
+              return next;
+            });
+            applySettings();
+            return;
+          }
+          await runKeyTest(provider);
+        })();
+      },
+      testLlmKey: (provider: ProviderId) => {
+        const row = stateRef.current.settings?.llmKeys.find(
+          (candidate) => candidate.provider === provider,
+        );
+        if (!row?.saved || row.testing) {
+          return;
+        }
+        updateLiveKeyRow(provider, (existing) => {
+          const next: LlmKeyRow = { ...existing, testing: { elapsedS: 0 } };
+          delete next.testResult;
+          return next;
+        });
+        ensureKeyTicker();
+        void runKeyTest(provider);
+      },
+      removeLlmKey: (provider: ProviderId) => {
+        void (async () => {
+          try {
+            const view = await api.putLlmKeys({
+              [providerKeyField(provider)]: null,
+            });
+            keysViewRef.current = view;
+            unverifiedKeysRef.current.delete(provider);
+            applySettings();
+          } catch {
+            // Removal failed — the row stays as the server has it.
+            applySettings();
+          }
+        })();
+      },
+      clearKeyTestResult: (provider: ProviderId) => {
+        updateLiveKeyRow(provider, (row) => {
+          const next = { ...row };
+          delete next.testResult;
+          return next;
+        });
+      },
+      setAgentFrequency: (id: string, frequency: AgentFrequency) => {
+        if (frequency === "after-gathering") {
+          return;
+        }
+        putFrequency(id, frequency);
+      },
+      // The live contract carries no weekly day/time fields (flagged) —
+      // the page renders the stamp read-only; this never fires.
+      setAgentWeeklyAt: () => undefined,
+      setAllAgentsPaused: (paused: boolean) => {
+        void (async () => {
+          try {
+            const res = await api.putAgentSchedules({ pausedAll: paused });
+            schedulesRef.current = res;
+            applySettings();
+          } catch {
+            applySettings();
+          }
+        })();
+      },
+      setAgentPaused: (id: string, paused: boolean) => {
+        const row = stateRef.current.settings?.schedules.rows.find(
+          (candidate) => candidate.id === id,
+        );
+        if (!row) {
+          return;
+        }
+        if (paused) {
+          // Per-agent pause is frequency "off" on the server contract;
+          // remember what Resume restores, client-side.
+          const from =
+            row.frequency !== "off" && row.frequency !== "after-gathering"
+              ? row.frequency
+              : undefined;
+          if (from) {
+            setState((prev) =>
+              prev.settings
+                ? {
+                    ...prev,
+                    settings: {
+                      ...prev.settings,
+                      schedules: {
+                        ...prev.settings.schedules,
+                        rows: prev.settings.schedules.rows.map((candidate) =>
+                          candidate.id === id
+                            ? { ...candidate, pausedFrom: from }
+                            : candidate,
+                        ),
+                      },
+                    },
+                  }
+                : prev,
+            );
+          }
+          putFrequency(id, "off");
+        } else {
+          putFrequency(id, row.pausedFrom ?? "weekly");
+        }
+      },
+      // No run-now endpoint on the live contract (flagged); the capability
+      // flag keeps the control off the page, so this never fires.
+      runAgentNow: () => undefined,
+      // Live mode enables all modules; Add capabilities is absent.
+      enableModule: () => undefined,
+      activateLicenceKey: (key: string) => {
+        // Format check is local; offline signed validation belongs to the
+        // licensing sprint — until it lands, a well-formed key honestly
+        // fails to validate (spec 6.4).
+        const cleaned = normaliseLicenceKey(key);
+        const notice = isWellFormedLicenceKey(cleaned)
+          ? ({ kind: "invalid" } as const)
+          : ({ kind: "malformed" } as const);
+        setState((prev) =>
+          prev.settings
+            ? {
+                ...prev,
+                settings: { ...prev.settings, licenceNotice: notice },
+              }
+            : prev,
+        );
+      },
+      clearLicenceNotice: () => {
+        setState((prev) => {
+          if (!prev.settings) {
+            return prev;
+          }
+          const settings = { ...prev.settings };
+          delete settings.licenceNotice;
+          return { ...prev, settings };
+        });
+      },
+      // No update-check endpoint on the live contract (flagged); the row
+      // renders the version alone, so this never fires.
+      checkForUpdates: () => undefined,
+    };
+
     // ── The actions surface ───────────────────────────────────────────────
 
     const live: AppActions = {
+      ...settingsLive,
       setCompetitorsView: (view) => {
         const productId = activeProductIdRef.current;
         if (productId) {
@@ -1405,7 +1892,10 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
       },
     };
 
-    return Object.assign(live, { __switchProduct: switchProduct });
+    return Object.assign(live, {
+      __switchProduct: switchProduct,
+      __loadSettings: loadSettings,
+    });
   }, []);
 
   // The active product is URL state (ADR 003 §1.2): load on mount and
@@ -1417,6 +1907,13 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
       }
     ).__switchProduct(activeProductId);
   }, [actions, activeProductId]);
+
+  // Settings are org-scoped — loaded once, not per product switch.
+  useEffect(() => {
+    void (
+      actions as AppActions & { __loadSettings: () => Promise<void> }
+    ).__loadSettings();
+  }, [actions]);
 
   // Cleanup on unmount.
   useEffect(() => {
@@ -1434,6 +1931,15 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
       }
       if (tintTimerRef.current !== null) {
         window.clearTimeout(tintTimerRef.current);
+      }
+      if (keyTickTimerRef.current !== null) {
+        window.clearInterval(keyTickTimerRef.current);
+      }
+      if (settingsRetryTimerRef.current !== null) {
+        window.clearTimeout(settingsRetryTimerRef.current);
+      }
+      for (const timer of settingsTimersRef.current) {
+        window.clearTimeout(timer);
       }
     };
   }, []);

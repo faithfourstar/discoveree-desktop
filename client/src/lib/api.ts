@@ -1,9 +1,16 @@
 import { countNoun } from "@/lib/text";
+import { nextRunStamp, providerMeta } from "@/mock/settings";
 import type {
+  AboutInfo,
+  AgentFrequency,
+  AgentScheduleRow,
   CompetitorObject,
   CompetitorProposal,
   CompetitorRow,
   EvidenceRef,
+  LlmKeyRow,
+  ModuleId,
+  ProviderId,
   ThreatWord,
 } from "@/mock/types";
 
@@ -140,6 +147,63 @@ export interface ServerFeedChange extends ServerChange {
 }
 
 // ---------------------------------------------------------------------------
+// Server payload shapes — settings (org-scoped, sprint 3a/3b contracts)
+// ---------------------------------------------------------------------------
+
+/** The server's provider naming (claude/gemini) differs from the UI's. */
+export type ServerLlmProvider =
+  | "openai"
+  | "gemini"
+  | "perplexity"
+  | "claude"
+  | "openrouter";
+
+export interface ServerLlmKeysView {
+  /** Masked keys only — the server has no unmasked read path at all. */
+  keys: Record<ServerLlmProvider, string | null>;
+  llmKeyMode: "individual" | "openrouter";
+}
+
+export interface ServerKeyTestResult {
+  ok: boolean;
+  /** British-English, user-facing. Present only when ok is false. */
+  error?: string;
+  /** Structured verdict (added after mismatch #2); ok/error retained. */
+  verdict?:
+    | "valid"
+    | "rejected"
+    | "rate-limited"
+    | "provider-error"
+    | "network"
+    | "timeout";
+  /** Sanitised provider detail (e.g. the HTTP status line), when useful. */
+  detail?: string;
+}
+
+export interface ServerAgentSchedule {
+  slug: string;
+  label: string;
+  description: string;
+  frequency: string;
+  /** null for slugs without a presentation mapping — rendered ungated. */
+  moduleGate: string | null;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+}
+
+export interface ServerAgentSchedules {
+  pausedAll: boolean;
+  agents: ServerAgentSchedule[];
+}
+
+export interface ServerAbout {
+  dataDir: string;
+  dbSizeBytes: number;
+  appVersion: string;
+  serverPort: number;
+}
+
+// ---------------------------------------------------------------------------
 // Endpoints — product-scoped resources live under /api/products/:productId
 // (ADR 003 §1.1; the singular /api/product convention is deleted, not
 // aliased). Org-scoped resources stay flat.
@@ -221,6 +285,30 @@ export const api = {
     request<{ changes: ServerFeedChange[]; total: number }>(
       productApi(productId, `/changes?limit=${limit}&offset=${offset}`),
     ),
+  // Settings (org-scoped, flat — ADR 003 §1.1)
+  getLlmKeys: () => request<ServerLlmKeysView>("/api/settings/llm-keys"),
+  /** PUT semantics per field: omitted = unchanged, null = cleared. */
+  putLlmKeys: (body: Record<string, string | null>) =>
+    request<ServerLlmKeysView>("/api/settings/llm-keys", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  testLlmKey: (body: { provider: ServerLlmProvider; apiKey?: string }) =>
+    request<ServerKeyTestResult>("/api/settings/llm-keys/test", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getAgentSchedules: () =>
+    request<ServerAgentSchedules>("/api/settings/agent-schedules"),
+  putAgentSchedules: (body: {
+    pausedAll?: boolean;
+    agents?: { slug: string; frequency: string }[];
+  }) =>
+    request<ServerAgentSchedules>("/api/settings/agent-schedules", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  getAbout: () => request<ServerAbout>("/api/settings/about"),
 };
 
 // ---------------------------------------------------------------------------
@@ -569,6 +657,191 @@ export function proposalFromDetail(
       "The first check couldn’t finish. You can track them anyway — agents retry on the next check — or try again now.";
   }
   return proposal;
+}
+
+// ---------------------------------------------------------------------------
+// Mapping — settings (server shapes → the client's settings shapes)
+// ---------------------------------------------------------------------------
+
+const PROVIDER_TO_SERVER: Record<ProviderId, ServerLlmProvider> = {
+  anthropic: "claude",
+  openai: "openai",
+  google: "gemini",
+  perplexity: "perplexity",
+  openrouter: "openrouter",
+};
+
+export function providerToServer(provider: ProviderId): ServerLlmProvider {
+  return PROVIDER_TO_SERVER[provider];
+}
+
+/** The PUT /settings/llm-keys body field for a provider. */
+export function providerKeyField(provider: ProviderId): string {
+  return `${PROVIDER_TO_SERVER[provider]}ApiKey`;
+}
+
+/**
+ * The server masks as `first4...last4`; the UI renders a typographic
+ * ellipsis. (Spec 2.2 asks for the full scheme prefix — flagged as a
+ * contract mismatch; the mask is rendered as served, never rebuilt.)
+ */
+function displayMask(mask: string): string {
+  return mask.replace("...", "…");
+}
+
+/**
+ * Masked view → provider rows. The live contract carries no added-on,
+ * last-used or verified metadata (flagged); absent segments simply do not
+ * render. `unverified` holds providers whose save-and-test could not verify
+ * the key this session.
+ */
+export function llmKeyRowsFromServer(
+  view: ServerLlmKeysView,
+  unverified: ReadonlySet<ProviderId>,
+): LlmKeyRow[] {
+  return (
+    [
+      "anthropic",
+      "openai",
+      "google",
+      "perplexity",
+      "openrouter",
+    ] as const
+  ).map((provider) => {
+    const mask = view.keys[PROVIDER_TO_SERVER[provider]];
+    const row: LlmKeyRow = {
+      provider,
+      webSearch: providerMeta(provider).webSearch,
+    };
+    if (mask) {
+      row.saved = {
+        mask: displayMask(mask),
+        verified: !unverified.has(provider),
+      };
+    }
+    return row;
+  });
+}
+
+/** A key-test outcome in the row's own vocabulary (LlmKeyRow.testResult). */
+export type KeyTestOutcome =
+  | { kind: "works" }
+  | { kind: "invalid" }
+  | { kind: "unreachable" }
+  | { kind: "provider-error"; detail?: string; line?: string }
+  | { kind: "rate-limited"; line?: string };
+
+/**
+ * Honest-verdict mapping (spec 2.4): "invalid" is claimed ONLY when the
+ * provider actually rejected the key, and "couldn't reach / wasn't checked"
+ * is ONLY for network/timeout. A provider that answered with an error WAS
+ * reached — that renders as provider-error, with the sanitised detail as
+ * served. Maps on the structured `verdict`; falls back to the legacy prose
+ * matching only when verdict is absent (older server).
+ */
+export function classifyKeyTest(result: ServerKeyTestResult): KeyTestOutcome {
+  switch (result.verdict) {
+    case "valid":
+      return { kind: "works" };
+    case "rejected":
+      return { kind: "invalid" };
+    case "rate-limited":
+      return {
+        kind: "rate-limited",
+        ...(result.error ? { line: result.error } : {}),
+      };
+    case "provider-error":
+      return {
+        kind: "provider-error",
+        ...(result.detail ? { detail: result.detail } : {}),
+        // Without a detail snippet, the server's sentence carries the HTTP
+        // status — keep it rather than dropping the specifics.
+        ...(!result.detail && result.error ? { line: result.error } : {}),
+      };
+    case "network":
+    case "timeout":
+      return { kind: "unreachable" };
+    case undefined:
+      break;
+  }
+  // Legacy prose fallback (no verdict field on the response).
+  if (result.ok) {
+    return { kind: "works" };
+  }
+  return result.error?.includes("rejected")
+    ? { kind: "invalid" }
+    : { kind: "unreachable" };
+}
+
+/** The server contract's six-value frequency vocabulary ("off" = paused). */
+const AGENT_FREQUENCIES: readonly AgentFrequency[] = [
+  "daily",
+  "every-3-days",
+  "weekly",
+  "fortnightly",
+  "monthly",
+  "off",
+];
+
+/** Server moduleGate values → client module ids ("always" always renders). */
+const MODULE_GATES: Record<string, ModuleId | "always"> = {
+  "competitive-intelligence": "competitors",
+  competitors: "competitors",
+  "customer-insights": "customers",
+  customers: "customers",
+  strategy: "strategy",
+  "roadmap-review": "roadmap",
+  roadmap: "roadmap",
+  connections: "connections",
+  always: "always",
+};
+
+export function agentRowFromServer(agent: ServerAgentSchedule): AgentScheduleRow {
+  const frequency =
+    AGENT_FREQUENCIES.find((value) => value === agent.frequency) ?? "weekly";
+  const module =
+    (agent.moduleGate ? MODULE_GATES[agent.moduleGate] : undefined) ?? "always";
+  const row: AgentScheduleRow = {
+    id: agent.slug,
+    name: agent.label,
+    module,
+    description: agent.description,
+    frequency,
+    runNow: false, // no run-now endpoint in the live contract (flagged)
+  };
+  if (agent.nextRunAt) {
+    const atMs = new Date(agent.nextRunAt).getTime();
+    if (!Number.isNaN(atMs)) {
+      row.nextRun = nextRunStamp(atMs, frequency);
+      row.nextRunSortKey = atMs;
+    }
+  }
+  if (agent.lastRunAt) {
+    const stamp = relativeStamp(agent.lastRunAt);
+    if (stamp) {
+      row.lastRun = { at: stamp };
+    }
+  }
+  return row;
+}
+
+/** "42 MB" / "1.3 GB" — the same figure the footer shows. */
+export function formatDbSize(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) {
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  }
+  return `${Math.max(1, Math.round(bytes / (1024 * 1024)))} MB`;
+}
+
+export function aboutFromServer(about: ServerAbout): AboutInfo {
+  // No updateState and no reveal seam on the live contract yet — the
+  // version row renders alone and the reveal action stays absent (no dead
+  // controls).
+  return {
+    dataDir: about.dataDir,
+    dbSizeOnDisk: formatDbSize(about.dbSizeBytes),
+    version: about.appVersion,
+  };
 }
 
 /** Minimal object for rows whose detail has not been fetched yet. */

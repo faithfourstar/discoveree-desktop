@@ -16,6 +16,7 @@ export default {
           icon: "var(--rail-icon)",
           label: "var(--rail-label)",
           active: "var(--rail-active-label)",
+          "active-icon": "var(--rail-active-icon)",
         },
         // Brand teal family
         teal: {

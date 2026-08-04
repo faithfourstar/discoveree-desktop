@@ -34,13 +34,25 @@ import {
   type ResearchStageScript,
 } from "@/mock/competitors";
 import { analyticsProduct, makeAppState, relayProduct } from "@/mock/data";
+import {
+  agentMeta,
+  hasAnyKey,
+  hasSearchKey,
+  makeMask,
+  mockValidateLicenceKey,
+  nextRunFrom,
+} from "@/mock/settings";
 import type {
+  AgentScheduleRow,
   AppState,
   CompetitorObject,
   CompetitorRow,
+  LlmKeyRow,
   MockScenarioKey,
   ProductRef,
+  ProviderId,
   RichText,
+  SettingsState,
 } from "@/mock/types";
 
 /**
@@ -66,6 +78,11 @@ const MOCK_SCENARIOS: readonly MockScenarioKey[] = [
   "no-search-key",
   "no-llm-key",
   "multi-product",
+  "settings-trial",
+  "settings-trial-ending",
+  "settings-reading-only",
+  "settings-paused",
+  "settings-minimal",
 ];
 
 const CHECK_DURATION_S = 8;
@@ -253,6 +270,8 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
   const checkIntervalRef = useRef<number | null>(null);
   const flowTimersRef = useRef<number[]>([]);
   const tintTimerRef = useRef<number | null>(null);
+  /** One shared ticker for settings elapsed counters (key tests, agent runs). */
+  const settingsIntervalRef = useRef<number | null>(null);
 
   const clearFlowTimers = () => {
     for (const timer of flowTimersRef.current) {
@@ -265,6 +284,13 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
     if (checkIntervalRef.current !== null) {
       window.clearInterval(checkIntervalRef.current);
       checkIntervalRef.current = null;
+    }
+  };
+
+  const clearSettingsInterval = () => {
+    if (settingsIntervalRef.current !== null) {
+      window.clearInterval(settingsIntervalRef.current);
+      settingsIntervalRef.current = null;
     }
   };
 
@@ -559,7 +585,513 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
       }
     };
 
+    // ── Settings (mock harness for the Settings page) ─────────────────────
+
+    const updateSettings = (
+      update: (settings: SettingsState) => SettingsState,
+    ) => {
+      setState((prev) =>
+        prev.settings ? { ...prev, settings: update(prev.settings) } : prev,
+      );
+    };
+
+    const updateKeyRow = (
+      provider: ProviderId,
+      update: (row: LlmKeyRow) => LlmKeyRow,
+    ) => {
+      updateSettings((settings) => ({
+        ...settings,
+        llmKeys: settings.llmKeys.map((row) =>
+          row.provider === provider ? update(row) : row,
+        ),
+      }));
+    };
+
+    const updateAgentRow = (
+      id: string,
+      update: (row: AgentScheduleRow) => AgentScheduleRow,
+    ) => {
+      updateSettings((settings) => ({
+        ...settings,
+        schedules: {
+          ...settings.schedules,
+          rows: settings.schedules.rows.map((row) =>
+            row.id === id ? update(row) : row,
+          ),
+        },
+      }));
+    };
+
+    /** Tick every in-flight settings counter; mirror agent runs in the footer. */
+    const settingsTick = () => {
+      const settings = stateRef.current.settings;
+      if (!settings) {
+        return;
+      }
+      const anyTesting = settings.llmKeys.some((row) => row.testing);
+      const runningRows = settings.schedules.rows.filter((row) => row.running);
+      if (!anyTesting && runningRows.length === 0) {
+        clearSettingsInterval();
+        return;
+      }
+      setState((prev) => {
+        if (!prev.settings) {
+          return prev;
+        }
+        const rows = prev.settings.schedules.rows.map((row) =>
+          row.running
+            ? { ...row, running: { elapsedS: row.running.elapsedS + 1 } }
+            : row,
+        );
+        const running = rows.filter((row) => row.running);
+        const next: AppState = {
+          ...prev,
+          settings: {
+            ...prev.settings,
+            llmKeys: prev.settings.llmKeys.map((row) =>
+              row.testing
+                ? { ...row, testing: { elapsedS: row.testing.elapsedS + 1 } }
+                : row,
+            ),
+            schedules: { ...prev.settings.schedules, rows },
+          },
+        };
+        if (running.length > 0) {
+          const longest = running.reduce(
+            (max, row) => Math.max(max, row.running?.elapsedS ?? 0),
+            0,
+          );
+          next.footer = {
+            ...next.footer,
+            agents: `Agents · running ${running
+              .map((row) => row.name)
+              .join(" and ")} · ${formatElapsed(longest)}`,
+            agentsLive: true,
+          };
+        }
+        return next;
+      });
+    };
+
+    const ensureSettingsTicker = () => {
+      if (settingsIntervalRef.current === null) {
+        settingsIntervalRef.current = window.setInterval(settingsTick, 1000);
+      }
+    };
+
+    /**
+     * Scripted key-test verdicts (mock only): a typed key containing
+     * "invalid" is rejected by the provider; "unreach" makes the provider
+     * unreachable (network — no verdict); "400" has the provider answer
+     * with an error; "429" rate-limits the check; anything else answers.
+     */
+    const resolveKeyTest = (provider: ProviderId, typedKey: string | null) => {
+      const scripted = typedKey ?? "";
+      const outcome: NonNullable<LlmKeyRow["testResult"]> = scripted.includes(
+        "invalid",
+      )
+        ? { kind: "invalid" }
+        : scripted.includes("unreach")
+          ? { kind: "unreachable" }
+          : scripted.includes("400")
+            ? { kind: "provider-error", detail: "HTTP 400 Bad Request" }
+            : scripted.includes("429")
+              ? { kind: "rate-limited" }
+              : { kind: "works", answeredInS: 1.8 };
+      const kind = outcome.kind;
+      setState((prev) => {
+        if (!prev.settings) {
+          return prev;
+        }
+        let becameAble = false;
+        const llmKeys = prev.settings.llmKeys.map((row) => {
+          if (row.provider !== provider) {
+            return row;
+          }
+          const next: LlmKeyRow = { ...row };
+          delete next.testing;
+          next.testResult = outcome;
+          if (kind === "works") {
+            if (next.saved) {
+              next.saved = {
+                ...next.saved,
+                verified: true,
+                lastUsedAgo: "just now",
+              };
+            }
+            becameAble = true;
+          } else if (next.saved) {
+            // Everything else keeps the key saved and unverified: rejected
+            // keys stay until the user acts (2.4); non-verdicts judge nothing.
+            next.saved = { ...next.saved, verified: false };
+          }
+          return next;
+        });
+        let next: AppState = {
+          ...prev,
+          settings: { ...prev.settings, llmKeys },
+        };
+        if (becameAble) {
+          // A working key unpauses agents / restores search-fed work.
+          if (next.agentsPaused) {
+            next = {
+              ...next,
+              agentsPaused: false,
+              footer: {
+                ...next.footer,
+                agents: "Agents idle · next run 21:00",
+              },
+            };
+          }
+          if (next.competitorsOverview && hasSearchKey(llmKeys)) {
+            next = {
+              ...next,
+              competitorsOverview: {
+                ...next.competitorsOverview,
+                searchKeyMissing: false,
+              },
+            };
+          }
+        }
+        return next;
+      });
+      if (kind === "works") {
+        // The ✓ settles back to the normal key line after 5 s (2.4).
+        schedule(5000, () => {
+          updateKeyRow(provider, (row) => {
+            if (row.testResult?.kind !== "works") {
+              return row;
+            }
+            const next = { ...row };
+            delete next.testResult;
+            return next;
+          });
+        });
+      }
+    };
+
+    const finishAgentRun = (id: string) => {
+      setState((prev) => {
+        if (!prev.settings) {
+          return prev;
+        }
+        const rows = prev.settings.schedules.rows.map((row) => {
+          if (row.id !== id) {
+            return row;
+          }
+          const recomputed =
+            row.weeklyAt && row.frequency === "weekly"
+              ? {
+                  nextRun: `${row.weeklyAt.day} ${row.weeklyAt.time}`,
+                  nextRunSortKey: Date.now() + 7 * 24 * 60 * 60 * 1000,
+                }
+              : nextRunFrom(row.frequency);
+          const findings =
+            id === "feedback-gathering" ? 12 : id === "competitor-check" ? 2 : 0;
+          const next: AgentScheduleRow = {
+            ...row,
+            lastRun: { at: "just now", findings },
+            ...(recomputed ?? {}),
+          };
+          delete next.running;
+          return next;
+        });
+        const stillRunning = rows.some((row) => row.running);
+        return {
+          ...prev,
+          settings: {
+            ...prev.settings,
+            schedules: { ...prev.settings.schedules, rows },
+          },
+          footer: stillRunning
+            ? prev.footer
+            : {
+                ...prev.footer,
+                agents: baseAgentsRef.current,
+                agentsLive: false,
+              },
+        };
+      });
+    };
+
+    const setAgentFrequency = (
+      id: string,
+      frequency: AgentScheduleRow["frequency"],
+    ) => {
+      updateAgentRow(id, (row) => {
+        if (frequency === "off") {
+          // Per-agent pause is frequency "off" (server contract); remember
+          // what Resume should restore.
+          const next: AgentScheduleRow = { ...row, frequency };
+          if (row.frequency !== "off" && row.frequency !== "after-gathering") {
+            next.pausedFrom = row.frequency;
+          }
+          delete next.nextRun;
+          delete next.nextRunSortKey;
+          return next;
+        }
+        const recomputed =
+          row.weeklyAt && frequency === "weekly"
+            ? {
+                nextRun: `${row.weeklyAt.day} ${row.weeklyAt.time}`,
+                nextRunSortKey: Date.now() + 7 * 24 * 60 * 60 * 1000,
+              }
+            : nextRunFrom(frequency);
+        const next: AgentScheduleRow = {
+          ...row,
+          frequency,
+          ...(recomputed ?? {}),
+        };
+        delete next.pausedFrom;
+        return next;
+      });
+    };
+
+    const settingsActions = {
+      saveLlmKey: (provider: ProviderId, key: string) => {
+        const typed = key.trim();
+        if (!typed) {
+          return;
+        }
+        updateKeyRow(provider, (row) => {
+          const next: LlmKeyRow = {
+            ...row,
+            saved: {
+              mask: makeMask(provider, typed),
+              addedAt: todayShort(),
+              verified: false,
+            },
+            testing: { elapsedS: 0 },
+          };
+          delete next.testResult;
+          return next;
+        });
+        ensureSettingsTicker();
+        schedule(2400, () => resolveKeyTest(provider, typed));
+      },
+      testLlmKey: (provider: ProviderId) => {
+        const row = stateRef.current.settings?.llmKeys.find(
+          (candidate) => candidate.provider === provider,
+        );
+        if (!row?.saved || row.testing) {
+          return;
+        }
+        updateKeyRow(provider, (existing) => {
+          const next: LlmKeyRow = { ...existing, testing: { elapsedS: 0 } };
+          delete next.testResult;
+          return next;
+        });
+        ensureSettingsTicker();
+        // Stored keys answer in the harness; failures are scripted on entry.
+        schedule(2100, () => resolveKeyTest(provider, null));
+      },
+      removeLlmKey: (provider: ProviderId) => {
+        setState((prev) => {
+          if (!prev.settings) {
+            return prev;
+          }
+          const llmKeys = prev.settings.llmKeys.map((row) => {
+            if (row.provider !== provider) {
+              return row;
+            }
+            const next: LlmKeyRow = {
+              provider: row.provider,
+              webSearch: row.webSearch,
+            };
+            return next;
+          });
+          let next: AppState = {
+            ...prev,
+            settings: { ...prev.settings, llmKeys },
+          };
+          if (!hasAnyKey(llmKeys)) {
+            // Home's amber notice takes over messaging (spec 2.6, home §B.1).
+            next = {
+              ...next,
+              agentsPaused: true,
+              footer: {
+                ...next.footer,
+                agents: "Agents paused · no LLM key",
+              },
+            };
+          } else if (next.competitorsOverview && !hasSearchKey(llmKeys)) {
+            next = {
+              ...next,
+              competitorsOverview: {
+                ...next.competitorsOverview,
+                searchKeyMissing: true,
+              },
+            };
+          }
+          return next;
+        });
+      },
+      clearKeyTestResult: (provider: ProviderId) => {
+        updateKeyRow(provider, (row) => {
+          const next = { ...row };
+          delete next.testResult;
+          return next;
+        });
+      },
+      setAgentFrequency,
+      setAgentWeeklyAt: (id: string, weeklyAt: { day: string; time: string }) => {
+        updateAgentRow(id, (row) => ({
+          ...row,
+          weeklyAt,
+          nextRun: `${weeklyAt.day} ${weeklyAt.time}`,
+          nextRunSortKey: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        }));
+      },
+      setAllAgentsPaused: (paused: boolean) => {
+        setState((prev) => {
+          if (!prev.settings) {
+            return prev;
+          }
+          return {
+            ...prev,
+            settings: {
+              ...prev.settings,
+              schedules: { ...prev.settings.schedules, pausedAll: paused },
+            },
+            footer: {
+              ...prev.footer,
+              // Pausing is a choice, not a failure — default colouring (3.4).
+              agents: paused
+                ? "Agents · paused by you"
+                : (baseAgentsRef.current ?? "Agents idle · next run 21:00"),
+              agentsLive: false,
+            },
+          };
+        });
+      },
+      setAgentPaused: (id: string, paused: boolean) => {
+        const row = stateRef.current.settings?.schedules.rows.find(
+          (candidate) => candidate.id === id,
+        );
+        if (!row) {
+          return;
+        }
+        if (paused) {
+          setAgentFrequency(id, "off");
+        } else {
+          setAgentFrequency(
+            id,
+            row.pausedFrom ?? agentMeta(id)?.defaultFrequency ?? "weekly",
+          );
+        }
+      },
+      runAgentNow: (id: string) => {
+        const settings = stateRef.current.settings;
+        const row = settings?.schedules.rows.find(
+          (candidate) => candidate.id === id,
+        );
+        if (
+          !settings ||
+          !row ||
+          settings.schedules.pausedAll ||
+          row.frequency === "off"
+        ) {
+          return;
+        }
+        if (row.running) {
+          return;
+        }
+        updateAgentRow(id, (existing) => ({
+          ...existing,
+          running: { elapsedS: 0 },
+        }));
+        setState((prev) => ({
+          ...prev,
+          footer: {
+            ...prev.footer,
+            agents: `Agents · running ${row.name} · 0:00`,
+            agentsLive: true,
+          },
+        }));
+        ensureSettingsTicker();
+        schedule(6000, () => finishAgentRun(id));
+      },
+      enableModule: (id: keyof AppState["modules"]) => {
+        setState((prev) => ({
+          ...prev,
+          modules: {
+            ...prev.modules,
+            [id]: { ...prev.modules[id], enabled: true },
+          },
+        }));
+      },
+      activateLicenceKey: (key: string) => {
+        const notice = mockValidateLicenceKey(key);
+        setState((prev) => {
+          if (!prev.settings) {
+            return prev;
+          }
+          if (notice.kind !== "valid") {
+            return {
+              ...prev,
+              settings: { ...prev.settings, licenceNotice: notice },
+            };
+          }
+          return {
+            ...prev,
+            settings: {
+              ...prev.settings,
+              licence: {
+                kind: "licensed",
+                email: "faith@discoveree.com",
+                expires: notice.expires,
+                keyMask: "DSCV-••••-••••-9F2K",
+                enteredOn: new Intl.DateTimeFormat("en-GB", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                }).format(new Date()),
+                renewalDue: false,
+              },
+              licenceNotice: notice,
+            },
+            footer: {
+              ...prev.footer,
+              licence: `Licence to ${notice.expires}`,
+              licenceAmber: false,
+            },
+          };
+        });
+        if (notice.kind === "valid") {
+          // The quiet confirmation line lasts 5 s (6.4).
+          schedule(5000, () => {
+            updateSettings((settings) => {
+              if (settings.licenceNotice?.kind !== "valid") {
+                return settings;
+              }
+              const next = { ...settings };
+              delete next.licenceNotice;
+              return next;
+            });
+          });
+        }
+      },
+      clearLicenceNotice: () => {
+        updateSettings((settings) => {
+          const next = { ...settings };
+          delete next.licenceNotice;
+          return next;
+        });
+      },
+      checkForUpdates: () => {
+        updateSettings((settings) =>
+          settings.about
+            ? {
+                ...settings,
+                about: { ...settings.about, updateState: "current" },
+              }
+            : settings,
+        );
+      },
+    };
+
     return {
+      ...settingsActions,
       setCompetitorsView: (view) => {
         persistView(view);
         setState((prev) =>
@@ -891,6 +1423,7 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
     }
     clearFlowTimers();
     clearCheckInterval();
+    clearSettingsInterval();
     const next = buildStateRef.current(scenario, activeProductId);
     builtForProductRef.current = activeProductId;
     baseAgentsRef.current = next.footer.agents;
@@ -918,6 +1451,7 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
     () => () => {
       clearFlowTimers();
       clearCheckInterval();
+      clearSettingsInterval();
       if (tintTimerRef.current !== null) {
         window.clearTimeout(tintTimerRef.current);
       }

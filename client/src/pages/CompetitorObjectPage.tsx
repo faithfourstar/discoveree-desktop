@@ -11,6 +11,7 @@ import { useLocation, useParams } from "wouter";
 import { CapabilityColumn } from "@/components/competitors/CapabilityColumns";
 import { NewTag } from "@/components/competitors/chips";
 import { SourceLink } from "@/components/competitors/SourceLink";
+import { ExternalLink } from "@/components/ExternalLink";
 import { VerifiedStamp } from "@/components/competitors/VerifiedStamp";
 import { EmptyState } from "@/components/EmptyState";
 import { EvidenceRow } from "@/components/EvidenceChip";
@@ -284,15 +285,13 @@ function MarketsSection({ items }: { items: readonly CitedMarket[] }) {
       <div className="flex flex-wrap gap-[9px]">
         {items.map((item) =>
           item.sourceUrl ? (
-            <a
+            <ExternalLink
               key={item.market}
               href={item.sourceUrl}
-              target="_blank"
-              rel="noreferrer"
               className="whitespace-nowrap rounded-[5px] bg-chip px-[7px] py-1 font-mono text-[10.5px] font-medium text-muted hover:text-teal-deep hover:underline"
             >
               {item.market}
-            </a>
+            </ExternalLink>
           ) : (
             <span
               key={item.market}

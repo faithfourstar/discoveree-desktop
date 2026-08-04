@@ -433,8 +433,173 @@ export interface FooterStatus {
   /** e.g. "MCP serving :7317". Absent on day one. */
   mcp?: string;
   offline: string;
-  /** e.g. "Licence to 14 Mar 2027". Absent on day one. */
+  /** e.g. "Licence to 14 Mar 2027" or "Trial · 9 days left". Absent on day one. */
   licence?: string;
+  /** Trial at ≤ 3 days or licence expiry ≤ 30 days away (settings spec 6.1/6.2). */
+  licenceAmber?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Settings — LLM keys (settings-spec Appendix A)
+// ---------------------------------------------------------------------------
+
+export type ProviderId =
+  | "anthropic"
+  | "openai"
+  | "google"
+  | "perplexity"
+  | "openrouter";
+
+export interface LlmKeyRow {
+  provider: ProviderId;
+  /** Renders the WEB SEARCH tag. */
+  webSearch: boolean;
+  saved?: {
+    /** e.g. "sk-ant-…R4kQ" — the ONLY form the server ever returns. */
+    mask: string;
+    /** Absent when the server holds no added-on record (live contract gap). */
+    addedAt?: string;
+    /** Absent ⇒ segment not rendered — no dash, no "never". */
+    lastUsedAgo?: string;
+    /** false ⇒ key line reads "saved · not yet verified". */
+    verified: boolean;
+  };
+  testing?: { elapsedS: number };
+  /**
+   * Honesty rule (spec 2.4): "couldn't reach / wasn't checked" is ONLY for
+   * network/timeout. A provider that answered with an error was reached —
+   * that is "provider-error", never "unreachable".
+   */
+  testResult?:
+    | { kind: "works"; answeredInS: number }
+    | { kind: "invalid" } // the provider rejected the key
+    | { kind: "unreachable" } // network/timeout — NO verdict on the key
+    // Reached; answered with an error. `detail` is the sanitised provider
+    // snippet (mono); `line` the server's full sentence when no detail.
+    | { kind: "provider-error"; detail?: string; line?: string }
+    | { kind: "rate-limited"; line?: string }; // reached; check refused for now
+}
+
+// ---------------------------------------------------------------------------
+// Settings — agent schedules (settings-spec part 3)
+// ---------------------------------------------------------------------------
+
+/**
+ * The server contract's frequency vocabulary (authoritative over the spec's
+ * Appendix-A type): per-agent pause is expressed as "off". "after-gathering"
+ * is a client-side rendering of the theme-aggregation row's coupling and is
+ * never editable.
+ */
+export type AgentFrequency =
+  | "daily"
+  | "every-3-days"
+  | "weekly"
+  | "fortnightly"
+  | "monthly"
+  | "off"
+  | "after-gathering";
+
+export interface AgentScheduleRow {
+  /** The server slug — stable identity for PUT round-trips. */
+  id: string;
+  /** Named by the job, never the slug. */
+  name: string;
+  /** Gates the row: only rows of enabled modules render ("always" always does). */
+  module: ModuleId | "always";
+  description: string;
+  /** "off" ⇒ this row alone is paused (block-level pause lives on `pausedAll`). */
+  frequency: AgentFrequency;
+  /** What "Resume" restores after a per-agent pause set frequency "off". */
+  pausedFrom?: Exclude<AgentFrequency, "off">;
+  /** Roadmap review only — weekly day + time. */
+  weeklyAt?: { day: string; time: string };
+  /** Display stamp, e.g. "Thu 09:00", "21:00", "12 Aug". Absent ⇒ no stamp. */
+  nextRun?: string;
+  /** Epoch ms behind nextRun — lets the lede/footer pick the earliest run. */
+  nextRunSortKey?: number;
+  running?: { elapsedS: number };
+  lastRun?: {
+    at: string;
+    /** Absent ⇒ no findings fragment; 0 renders "nothing changed". */
+    findings?: number;
+    failed?: { reason: string };
+  };
+  /** false for per-object agents — the scheduler owns the set (spec 3.2). */
+  runNow: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Settings — licence (settings-spec part 6)
+// ---------------------------------------------------------------------------
+
+export type LicenceState =
+  | { kind: "trial"; daysLeft: number }
+  | {
+      kind: "licensed";
+      email: string;
+      expires: string;
+      keyMask: string;
+      /** e.g. "3 Aug 2026" — the key row's provenance stamp. */
+      enteredOn?: string;
+      /** Expiry ≤ 30 days away — amber date + renew clause. */
+      renewalDue: boolean;
+    }
+  | { kind: "readingOnly"; endedOn: string; reason: "trial" | "expired" };
+
+/** Inline result of a key-entry attempt (settings-spec 6.4). */
+export type LicenceNotice =
+  | { kind: "valid"; expires: string }
+  | { kind: "malformed" }
+  | { kind: "invalid" }
+  | { kind: "expired"; expiredOn: string };
+
+// ---------------------------------------------------------------------------
+// Settings — about & your data (settings-spec part 7)
+// ---------------------------------------------------------------------------
+
+export interface AboutInfo {
+  dataDir: string;
+  /** Same source of truth as the footer's "Local · 42 MB on disk" segment. */
+  dbSizeOnDisk: string;
+  version: string;
+  /** Absent ⇒ no update machinery on this seam yet: version renders alone. */
+  updateState?: "current" | "ready" | { failedAt: string };
+  /** The reveal-in-file-manager seam exists (mock harness only, for now). */
+  canReveal?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Settings — page state (settings-spec parts 1–7)
+// ---------------------------------------------------------------------------
+
+/** The Connections block's live summary (settings-spec part 4 — stub). */
+export interface SettingsConnectionsSummary {
+  /** AI tools consuming context over MCP. Empty ⇒ invitation line. */
+  serving: readonly { name: string; queriesThisWeek: number }[];
+  /** Data tools being polled. */
+  checking: readonly { name: string; cadence: string; polledAgo: string }[];
+}
+
+export interface SettingsState {
+  llmKeys: readonly LlmKeyRow[];
+  schedules: {
+    pausedAll: boolean;
+    /** All known rows — the page filters by enabled modules (gating §0.2). */
+    rows: readonly AgentScheduleRow[];
+  };
+  /**
+   * Seams the fixed live contract does not carry yet. Controls render only
+   * where their seam exists — no dead controls (mock: all true).
+   */
+  capabilities: {
+    runNow: boolean;
+    perAgentPause: boolean;
+    editWeeklyAt: boolean;
+  };
+  connections: SettingsConnectionsSummary;
+  licence: LicenceState;
+  licenceNotice?: LicenceNotice;
+  about: AboutInfo | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -456,7 +621,12 @@ export type MockScenarioKey =
   | "checking"
   | "no-search-key"
   | "no-llm-key"
-  | "multi-product";
+  | "multi-product"
+  | "settings-trial"
+  | "settings-trial-ending"
+  | "settings-reading-only"
+  | "settings-paused"
+  | "settings-minimal";
 
 export interface AppState {
   productName: string;
@@ -481,6 +651,8 @@ export interface AppState {
   competitorAddFlow: AddFlowState;
   /** Onboarding-deferred proposals for the day-one variant (spec 2.5). */
   onboardingProposals: readonly OnboardingCompetitorProposal[] | null;
+  /** Settings page state — null until the live provider has loaded it. */
+  settings: SettingsState | null;
   /** No LLM key at all — agents paused globally (spec 5.3). */
   agentsPaused: boolean;
   /** Row/object whose stamp just settled — drives the 600 ms tint fade. */

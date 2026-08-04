@@ -1,6 +1,12 @@
 import { createContext, useContext, type ReactNode } from "react";
 import { briefingState } from "@/mock/data";
-import type { AppState, ThreatWord } from "@/mock/types";
+import type {
+  AgentFrequency,
+  AppState,
+  ModuleId,
+  ProviderId,
+  ThreatWord,
+} from "@/mock/types";
 
 /**
  * The provider seam: one state shape + one actions interface, served by two
@@ -50,6 +56,26 @@ export interface AppActions {
    * `state.productCreate`.
    */
   createProduct(input: { url: string }): void;
+  // Settings — LLM keys (settings-spec part 2)
+  /** "Save and test": stores the key, then runs the same live test. */
+  saveLlmKey(provider: ProviderId, key: string): void;
+  /** "Test" on a saved key — one lightweight live call, elapsed counter. */
+  testLlmKey(provider: ProviderId): void;
+  removeLlmKey(provider: ProviderId): void;
+  /** Clears an in-row test verdict (e.g. when Replace opens the entry). */
+  clearKeyTestResult(provider: ProviderId): void;
+  // Settings — agent schedules (settings-spec part 3)
+  setAgentFrequency(id: string, frequency: AgentFrequency): void;
+  setAgentWeeklyAt(id: string, weeklyAt: { day: string; time: string }): void;
+  setAllAgentsPaused(paused: boolean): void;
+  setAgentPaused(id: string, paused: boolean): void;
+  /** Set-level agents only; also serves "Try again" on a failed run. */
+  runAgentNow(id: string): void;
+  // Settings — add capabilities, licence, about
+  enableModule(id: ModuleId): void;
+  activateLicenceKey(key: string): void;
+  clearLicenceNotice(): void;
+  checkForUpdates(): void;
 }
 
 const noop = () => undefined;
@@ -80,6 +106,19 @@ export const defaultActions: AppActions = {
   resumeProposal: noop,
   trackOnboardingProposals: noop,
   createProduct: noop,
+  saveLlmKey: noop,
+  testLlmKey: noop,
+  removeLlmKey: noop,
+  clearKeyTestResult: noop,
+  setAgentFrequency: noop,
+  setAgentWeeklyAt: noop,
+  setAllAgentsPaused: noop,
+  setAgentPaused: noop,
+  runAgentNow: noop,
+  enableModule: noop,
+  activateLicenceKey: noop,
+  clearLicenceNotice: noop,
+  checkForUpdates: noop,
 };
 
 const AppStateContext = createContext<AppState>(briefingState);

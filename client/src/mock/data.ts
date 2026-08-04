@@ -4,6 +4,7 @@ import {
   makeOverview,
   onboardingProposals,
 } from "./competitors";
+import { makeSettings } from "./settings";
 import type {
   AppState,
   DayOnePrompt,
@@ -165,6 +166,7 @@ function makePopulatedState(scenario: MockScenarioKey): AppState {
     competitors: {},
     competitorAddFlow: { ...initialAddFlow },
     onboardingProposals: null,
+    settings: makeSettings("healthy"),
     agentsPaused: false,
     justVerifiedId: null,
   };
@@ -197,6 +199,7 @@ function makeDayOneState(scenario: MockScenarioKey): AppState {
     competitors: {},
     competitorAddFlow: { ...initialAddFlow },
     onboardingProposals: null,
+    settings: makeSettings("day-one"),
     agentsPaused: false,
     justVerifiedId: null,
   };
@@ -232,6 +235,48 @@ export function makeAppState(
   }
 
   const state = makePopulatedState(scenario);
+  if (scenario === "settings-trial") {
+    state.settings = makeSettings("trial");
+    state.footer = { ...state.footer, licence: "Trial · 9 days left" };
+  } else if (scenario === "settings-trial-ending") {
+    state.settings = makeSettings("trial-ending");
+    state.footer = {
+      ...state.footer,
+      licence: "Trial · 2 days left",
+      licenceAmber: true,
+    };
+  } else if (scenario === "settings-reading-only") {
+    state.settings = makeSettings("reading-only");
+    state.footer = { ...state.footer, licence: "Reading only · trial ended" };
+  } else if (scenario === "settings-paused") {
+    state.settings = makeSettings("paused");
+    state.footer = { ...state.footer, agents: "Agents · paused by you" };
+  } else if (scenario === "settings-minimal") {
+    // Only job 5 chosen: the inventory agent is the sole scheduled row
+    // (settings spec 3.5) and Add capabilities lists the other four jobs.
+    state.settings = makeSettings("minimal");
+    state.modules = {
+      ...state.modules,
+      competitors: { enabled: false, populated: false },
+      customers: { enabled: false, populated: false },
+      strategy: { enabled: false, populated: false },
+      roadmap: { enabled: false, populated: false },
+    };
+    state.home = {
+      kicker: "Your context, this morning",
+      lede: [{ text: "Your context is being served — nothing else is switched on yet." }],
+      items: [],
+      ideaPlaceholder: "Test a product idea…",
+      serving: { consumers: [], teammatesReading: 0 },
+    };
+    state.competitorsOverview = null;
+    state.footer = {
+      ...state.footer,
+      local: "Local · 6 MB on disk",
+      agents: "Agents idle · next run 12 Aug",
+      licence: "Trial · 12 days left",
+    };
+  }
   if (scenario === "multi-product") {
     // Two products; the dataset follows the product in the URL (ADR 003
     // §1.2 — the active product is URL state, nothing else).
@@ -249,8 +294,10 @@ export function makeAppState(
     state.competitorsOverview = makeOverview("briefing", {
       searchKeyMissing: true,
     });
+    state.settings = makeSettings("no-search-key");
   } else if (scenario === "no-llm-key") {
     state.agentsPaused = true;
+    state.settings = makeSettings("no-llm-key");
     state.footer = { ...state.footer, agents: "Agents paused · no LLM key" };
   }
   if (state.competitorsOverview) {

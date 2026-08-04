@@ -3,21 +3,24 @@
 @tailwind utilities;
 
 /*
- * Discoveree Desktop design tokens — layout direction 2a "Briefing in a shell".
- * The app chrome (window rail) is dark in BOTH themes; only the content
- * surface swaps between light and dark. Dark content is a derived theme,
- * not a naive inversion: the content sits darker than the rail so the
- * chrome still reads as chrome.
+ * Discoveree Desktop design tokens — layout direction 2a "Briefing in a shell",
+ * amended: the chrome (window rail) follows the theme. Light mode is the
+ * design system's native light/clean/teal (white rail, hairline separation,
+ * teal-tint active state); dark mode keeps the 2a canvas exactly — dark
+ * content sits darker than the rail so the chrome still reads as chrome.
  */
 :root {
-  /* Chrome — constant across themes */
-  --chrome: #20262e;
-  --chrome-border: #2c333c;
-  --chrome-dot: #3a424c;
-  --rail-icon: #8b95a1;
-  --rail-label: #98a1ac;
-  --rail-active-label: #eaeef2;
-  --rail-active-bg: rgba(255, 255, 255, 0.11);
+  /* Chrome — light theme: white rail, hairline-separated from the content */
+  --chrome: #ffffff;
+  --chrome-border: #eaecef;
+  --chrome-dot: #d5dae0;
+  --rail-icon: #98a1ac;
+  --rail-label: #63707f;
+  --rail-active-icon: #0e8f86;
+  --rail-active-label: #0e8f86;
+  /* The teal-tint active pattern proven on the light surfaces. */
+  --rail-active-bg: #e7f6f5;
+  --rail-hover-bg: rgba(29, 38, 53, 0.05);
 
   /* Teal family */
   --teal: #10b2a6;
@@ -50,6 +53,18 @@
 }
 
 .dark {
+  /* Chrome — dark theme keeps the 2a canvas unchanged (owner's call).
+     The rail border is transparent: separation comes from the surfaces. */
+  --chrome: #20262e;
+  --chrome-border: transparent;
+  --chrome-dot: #3a424c;
+  --rail-icon: #8b95a1;
+  --rail-label: #98a1ac;
+  --rail-active-icon: #3ed3c6;
+  --rail-active-label: #eaeef2;
+  --rail-active-bg: rgba(255, 255, 255, 0.11);
+  --rail-hover-bg: rgba(255, 255, 255, 0.06);
+
   /* Dark content theme — content darker than the rail's #20262E */
   --app: #14181e;
   --surface: #1a1f26;

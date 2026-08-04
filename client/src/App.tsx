@@ -6,12 +6,13 @@ import { AddProductPage } from "@/pages/AddProductPage";
 import { CompetitorObjectPage } from "@/pages/CompetitorObjectPage";
 import { CompetitorsOverviewPage } from "@/pages/CompetitorsOverviewPage";
 import { HomePage } from "@/pages/HomePage";
+import { SettingsPage } from "@/pages/SettingsPage";
 import {
   ConnectionsPage,
   CustomersPage,
   NotFoundPage,
   RoadmapPage,
-  SettingsPage,
+  SourcesPage,
   StrategyPage,
 } from "@/pages/stubs";
 import { AppStateProvider, useAppState } from "@/state/AppStateContext";
@@ -75,6 +76,7 @@ export function App() {
             component={ConnectionsPage}
           />
           <Route path="/p/:productId/settings" component={SettingsPage} />
+          <Route path="/p/:productId/sources" component={SourcesPage} />
           <Route component={NotFoundPage} />
         </Switch>
       </AppShell>

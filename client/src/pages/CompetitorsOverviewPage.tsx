@@ -54,7 +54,7 @@ function SearchKeyNotice() {
         news are paused. A Perplexity, OpenAI or Gemini key switches them on.
       </p>
       <Link
-        href={productHref("/settings")}
+        href={productHref("/settings#llm-keys")}
         className="whitespace-nowrap rounded-[7px] border border-edge-btn bg-surface px-[13px] py-2 text-[12.5px] font-medium text-body transition-colors hover:border-edge-input"
       >
         Add a key

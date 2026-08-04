@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ExternalLink } from "@/components/ExternalLink";
 import type { EvidenceRef } from "@/mock/types";
 
 /** A single evidence citation chip — mono, quiet, always present. */
@@ -7,15 +8,12 @@ export function EvidenceChip({ evidence }: { evidence: EvidenceRef }) {
     "whitespace-nowrap rounded-[5px] bg-chip px-[7px] py-1 font-mono text-[10.5px] font-medium text-muted";
   if (evidence.href) {
     return (
-      <a
+      <ExternalLink
         href={evidence.href}
-        target="_blank"
-        rel="noreferrer"
-        onClick={(event) => event.stopPropagation()}
         className={`${className} hover:text-teal-deep hover:underline`}
       >
         {evidence.label}
-      </a>
+      </ExternalLink>
     );
   }
   return <span className={className}>{evidence.label}</span>;

@@ -29,9 +29,9 @@ export function ConnectionsPage() {
   );
 }
 
-export function SettingsPage() {
+export function SourcesPage() {
   return (
-    <EmptyState line="LLM keys, connections, agent schedules and your licence live here." />
+    <EmptyState line="Everything agents believe, and why — sources land here as agents cite them." />
   );
 }
 

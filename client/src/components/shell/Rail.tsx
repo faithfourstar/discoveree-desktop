@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { BRAND_TEAL, BrandMark } from "@/components/shell/BrandMark";
 import { productSubpath, useProductHref } from "@/lib/productUrl";
 import { moduleRegistry, type ModuleDef } from "@/modules/registry";
 import { useAppState } from "@/state/AppStateContext";
@@ -24,7 +25,7 @@ function RailItem({
         "relative flex w-full flex-col items-center gap-[7px] rounded-[9px] pb-2 pt-[9px] transition-colors",
         active
           ? "bg-[var(--rail-active-bg)]"
-          : "hover:bg-[rgba(255,255,255,0.06)]",
+          : "hover:bg-[var(--rail-hover-bg)]",
         dimmed ? "opacity-40" : "",
         module.pinned === "bottom" ? "mt-auto" : "",
       ].join(" ")}
@@ -33,7 +34,7 @@ function RailItem({
       <Icon
         size={15}
         strokeWidth={active ? 2 : 1.75}
-        className={active ? "text-teal-bright" : "text-rail-icon"}
+        className={active ? "text-rail-active-icon" : "text-rail-icon"}
         aria-hidden
       />
       <span
@@ -68,12 +69,16 @@ export function Rail() {
   return (
     <nav
       aria-label="Modules"
-      className="flex w-[84px] flex-none flex-col items-center gap-[3px] bg-chrome px-2 py-3.5"
+      className="flex w-[84px] flex-none flex-col items-center gap-[3px] border-r border-chrome-border bg-chrome px-2 py-3.5"
     >
+      {/* The D mark renders in its own brand teal on both chromes — it
+          reads on white and on the dark rail (BrandMark.tsx brand note). */}
       <div
-        className="mb-3.5 h-[26px] w-[26px] flex-none rounded-[7px] bg-teal"
-        aria-hidden
-      />
+        className="mb-3.5 flex-none"
+        style={{ color: BRAND_TEAL }}
+      >
+        <BrandMark size={26} />
+      </div>
       {moduleRegistry
         .filter((module) => modules[module.id].enabled)
         .map((module) => (
