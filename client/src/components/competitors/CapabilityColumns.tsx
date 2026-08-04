@@ -9,7 +9,7 @@ export function CapabilityColumn({
 }) {
   return (
     <div className="flex-1">
-      <div className="mb-2.5 font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-label">
+      <div className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-label">
         {heading}
       </div>
       <div className="text-[13.5px] leading-[1.75] text-body">

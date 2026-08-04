@@ -41,11 +41,10 @@ export function RichText({ value }: { value: RichTextValue }) {
           );
         }
         if (segment.tone === "mono") {
+          // Typography ruling as amended (owner, 4 Aug): the "mono" tone
+          // renders as `.data` — Inter with tabular figures, no mono face.
           return (
-            <span
-              key={index}
-              className="font-mono text-[0.88em] tabular-nums"
-            >
+            <span key={index} className="data">
               {text}
             </span>
           );

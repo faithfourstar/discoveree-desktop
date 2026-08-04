@@ -1,4 +1,6 @@
 import {
+  createContext,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -91,6 +93,13 @@ const MOCK_SCENARIOS: readonly MockScenarioKey[] = [
   "settings-reading-only",
   "settings-paused",
   "settings-minimal",
+  "customers-day-one",
+  "customers-proposals",
+  "customers-adoption",
+  "connections-day-one",
+  "connections-aged",
+  "connections-degraded",
+  "connections-arrivals",
 ];
 
 const CHECK_DURATION_S = 8;
@@ -214,6 +223,13 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
   const [location, navigate] = useLocation();
   const requestedParam = new URLSearchParams(search).get("state");
   const requested = MOCK_SCENARIOS.find((key) => key === requestedParam);
+  // An unknown key silently keeping the previous dataset cost a review
+  // round — fail loudly in the console (dev harness affordance).
+  if (requestedParam !== null && requested === undefined) {
+    console.warn(
+      `[mock] Unknown ?state= key "${requestedParam}" — keeping the current dataset. Known keys: ${MOCK_SCENARIOS.join(", ")}`,
+    );
+  }
   const activeProductId = parseProductId(location);
 
   /** Products created via "Add another product" this session. */
@@ -2027,6 +2043,281 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
       dismissSegmentAdoption: () => {
         setState((prev) => ({ ...prev, segmentAdoption: null }));
       },
+      // ── Connections (connections-spec) ───────────────────────────────────
+      acceptArrival: (id) => {
+        setState((prev) => {
+          const arrival = prev.arrivals.find((card) => card.id === id);
+          if (!arrival) {
+            return prev;
+          }
+          const arrivals = prev.arrivals.filter((card) => card.id !== id);
+          let next: AppState = { ...prev, arrivals };
+          // Accepted intel lands in the change feed of its target (ADR 005).
+          if (arrival.targetObjectId && prev.competitorsOverview) {
+            next = {
+              ...next,
+              competitorsOverview: {
+                ...prev.competitorsOverview,
+                rows: prev.competitorsOverview.rows.map((row) =>
+                  row.id === arrival.targetObjectId
+                    ? {
+                        ...row,
+                        change: {
+                          line: arrival.verbatim,
+                          evidence: arrival.evidence,
+                          unseen: true,
+                        },
+                      }
+                    : row,
+                ),
+              },
+            };
+            const object = prev.competitors[arrival.targetObjectId];
+            if (object) {
+              next.competitors = {
+                ...next.competitors,
+                [arrival.targetObjectId]: {
+                  ...object,
+                  summary: arrival.verbatim,
+                  changeEvidence: arrival.evidence,
+                  changeUnseen: true,
+                },
+              };
+            }
+          }
+          if (next.connections) {
+            const remaining = arrivals.length;
+            next.connections = {
+              ...next.connections,
+              tools: next.connections.tools.map((tool) =>
+                tool.pendingProposals !== undefined
+                  ? remaining > 0
+                    ? { ...tool, pendingProposals: remaining }
+                    : (() => {
+                        const { pendingProposals: _p, ...rest } = tool;
+                        return rest;
+                      })()
+                  : tool,
+              ),
+              ...(remaining > 0
+                ? { pendingProposalsTotal: remaining }
+                : {}),
+            };
+            if (remaining === 0) {
+              delete next.connections.pendingProposalsTotal;
+            }
+          }
+          return next;
+        });
+      },
+      dismissArrival: (id) => {
+        setState((prev) => {
+          const arrivals = prev.arrivals.filter((card) => card.id !== id);
+          const next: AppState = { ...prev, arrivals };
+          if (next.connections) {
+            const remaining = arrivals.length;
+            next.connections = {
+              ...next.connections,
+              tools: next.connections.tools.map((tool) =>
+                tool.pendingProposals !== undefined
+                  ? remaining > 0
+                    ? { ...tool, pendingProposals: remaining }
+                    : (() => {
+                        const { pendingProposals: _p, ...rest } = tool;
+                        return rest;
+                      })()
+                  : tool,
+              ),
+            };
+            if (remaining > 0) {
+              next.connections.pendingProposalsTotal = remaining;
+            } else {
+              delete next.connections.pendingProposalsTotal;
+            }
+          }
+          return next;
+        });
+      },
+      researchArrival: (id) => {
+        // The arrival is the invitation; the profile is still researched and
+        // human-accepted like any other (spec 4.2). The card stays pending.
+        const arrival = stateRef.current.arrivals.find(
+          (card) => card.id === id,
+        );
+        if (!arrival?.targetName) {
+          return;
+        }
+        setState((prev) => ({
+          ...prev,
+          competitorAddFlow: {
+            ...prev.competitorAddFlow,
+            open: true,
+            mode: "name",
+            draft: arrival.targetName ?? "",
+            phase: "input",
+          },
+        }));
+      },
+      dismissWriteAttempt: (id) => {
+        setState((prev) => {
+          if (!prev.connections) {
+            return prev;
+          }
+          const writeAttempts = prev.connections.writeAttempts.filter(
+            (attempt) => attempt.id !== id,
+          );
+          const next: AppState = {
+            ...prev,
+            connections: { ...prev.connections, writeAttempts },
+          };
+          if (writeAttempts.length === 0 && next.home?.serving) {
+            const { writeAttemptFragment: _f, ...serving } = next.home.serving;
+            next.home = { ...next.home, serving };
+          }
+          return next;
+        });
+      },
+      renameReader: (id, name) => {
+        const trimmed = name.trim();
+        if (!trimmed) {
+          return;
+        }
+        setState((prev) =>
+          prev.connections
+            ? {
+                ...prev,
+                connections: {
+                  ...prev.connections,
+                  readers: prev.connections.readers.map((reader) =>
+                    reader.id === id
+                      ? { ...reader, renamedTo: trimmed }
+                      : reader,
+                  ),
+                },
+              }
+            : prev,
+        );
+      },
+      removeReader: (id) => {
+        setState((prev) => {
+          if (!prev.connections) {
+            return prev;
+          }
+          const readers = prev.connections.readers.filter(
+            (reader) => reader.id !== id,
+          );
+          const next: AppState = {
+            ...prev,
+            connections: { ...prev.connections, readers },
+          };
+          if (next.home?.serving) {
+            next.home = {
+              ...next.home,
+              serving: {
+                ...next.home.serving,
+                teammatesReading: readers.length,
+              },
+            };
+          }
+          return next;
+        });
+      },
+      setUpTool: (id) => {
+        setState((prev) => {
+          if (!prev.connections) {
+            return prev;
+          }
+          const next: AppState = {
+            ...prev,
+            connections: {
+              ...prev.connections,
+              // The user's assertion moves the row to waiting (a fresh
+              // "set up today" also clears the aged variant). A connected
+              // row stays connected — the assertion is a convenience,
+              // never a gate, and never a downgrade (spec 2.4).
+              tools: prev.connections.tools.map((tool) =>
+                tool.id === id && tool.state.kind !== "connected"
+                  ? { ...tool, state: { kind: "waiting", setUpAgo: "today" } }
+                  : tool,
+              ),
+            },
+            // Configuration is real work done: the rail item lights up; the
+            // first query lights the home line (spec 6.1).
+            modules: {
+              ...prev.modules,
+              connections: { ...prev.modules.connections, populated: true },
+            },
+          };
+          return next;
+        });
+      },
+      forgetTool: (id) => {
+        setState((prev) =>
+          prev.connections
+            ? {
+                ...prev,
+                connections: {
+                  ...prev.connections,
+                  tools: prev.connections.tools.map((tool) =>
+                    tool.id === id
+                      ? { ...tool, state: { kind: "unconfigured" } }
+                      : tool,
+                  ),
+                },
+              }
+            : prev,
+        );
+      },
+      setUpClaudeAutomatically: () => {
+        setState((prev) => ({ ...prev, claudeSetup: { kind: "pending" } }));
+        // The aged scenario exercises the honest failure path (spec 2.4's
+        // "We couldn't edit Claude's config" degrade).
+        const fails = stateRef.current.mockScenario === "connections-aged";
+        schedule(400, () => {
+          if (fails) {
+            setState((prev) => ({
+              ...prev,
+              claudeSetup: {
+                kind: "failed",
+                message:
+                  "We couldn't edit Claude's config — paste this in yourself.",
+              },
+            }));
+            return;
+          }
+          setState((prev) => {
+            const next: AppState = {
+              ...prev,
+              claudeSetup: {
+                kind: "written",
+                configPath:
+                  "~/Library/Application Support/Claude/claude_desktop_config.json",
+              },
+            };
+            if (next.connections) {
+              next.connections = {
+                ...next.connections,
+                tools: next.connections.tools.map((tool) =>
+                  tool.id === "claude" && tool.state.kind !== "connected"
+                    ? {
+                        ...tool,
+                        state: { kind: "waiting", setUpAgo: "today" },
+                      }
+                    : tool,
+                ),
+              };
+              next.modules = {
+                ...next.modules,
+                connections: {
+                  ...next.modules.connections,
+                  populated: true,
+                },
+              };
+            }
+            return next;
+          });
+        });
+      },
       createProduct: ({ url }) => {
         const domain = normaliseDomain(url);
         if (!domain) {
@@ -2188,21 +2479,66 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
  * the session (in-app navigation drops query params; a full reload without
  * the parameter returns to live mode).
  */
+/**
+ * The demo-data latch, exposed so the shell can render a persistent
+ * indicator with an exit control — demo mode must be visible and leavable,
+ * never silent (owner-reported defect, 4 Aug).
+ */
+export interface MockLatchValue {
+  active: boolean;
+  /** The latched key, for the indicator's tooltip/debugging. */
+  stateKey: string | null;
+  /** Clears the latch and lands on the real workspace. */
+  exit: () => void;
+}
+
+const MockLatchContext = createContext<MockLatchValue>({
+  active: false,
+  stateKey: null,
+  exit: () => undefined,
+});
+
+export function useMockLatch(): MockLatchValue {
+  return useContext(MockLatchContext);
+}
+
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const search = useSearch();
-  const hasStateParam = new URLSearchParams(search).has("state");
-  const [mockMode, setMockMode] = useState(hasStateParam);
+  const [, navigate] = useLocation();
+  const stateParam = new URLSearchParams(search).get("state");
+  // The latch is DELIBERATELY in-memory only: it survives in-app navigation
+  // (a design review walks between pages without re-typing the param) but a
+  // fresh boot — typed URL or reload — without ?state= starts live. It is
+  // never persisted to storage; adding persistence would defeat the user's
+  // explicit URL edit.
+  const [latchedKey, setLatchedKey] = useState<string | null>(stateParam);
 
   useEffect(() => {
-    if (hasStateParam) {
-      setMockMode(true);
+    if (stateParam !== null) {
+      setLatchedKey(stateParam);
     }
-  }, [hasStateParam]);
+  }, [stateParam]);
 
-  if (mockMode) {
-    return <MockAppStateProvider>{children}</MockAppStateProvider>;
-  }
-  return <LiveAppStateProvider>{children}</LiveAppStateProvider>;
+  const latch: MockLatchValue = {
+    active: latchedKey !== null,
+    stateKey: latchedKey,
+    exit: () => {
+      setLatchedKey(null);
+      // Land at the root without the param; the URL guard resolves the
+      // real first product from the live provider.
+      navigate("/");
+    },
+  };
+
+  return (
+    <MockLatchContext.Provider value={latch}>
+      {latchedKey !== null ? (
+        <MockAppStateProvider>{children}</MockAppStateProvider>
+      ) : (
+        <LiveAppStateProvider>{children}</LiveAppStateProvider>
+      )}
+    </MockLatchContext.Provider>
+  );
 }
 
 // Re-exports so existing imports keep working across the seam.

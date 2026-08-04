@@ -48,7 +48,7 @@ function RailItem({
         {module.label}
       </span>
       {state.badge !== undefined && state.badge > 0 ? (
-        <span className="absolute right-[11px] top-[5px] flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-teal px-[3px] font-mono text-[9px] font-semibold text-white">
+        <span className="absolute right-[11px] top-[5px] flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-teal px-[3px] text-[9px] font-semibold tabular-nums text-white">
           {state.badge}
         </span>
       ) : null}

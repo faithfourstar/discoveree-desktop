@@ -1,3 +1,4 @@
+import { DataText } from "@/components/DataText";
 import type { EvidenceBasis } from "@/mock/types";
 
 /**
@@ -19,7 +20,7 @@ export function basisIsEmpty(basis: EvidenceBasis): boolean {
 /** The quiet mono "added by you" chip — asserted, never dressed as research. */
 export function AddedByYouChip() {
   return (
-    <span className="whitespace-nowrap rounded-[5px] bg-chip px-[7px] py-0.5 font-mono text-[10.5px] font-medium text-muted">
+    <span className="whitespace-nowrap rounded-[5px] bg-chip px-[7px] py-0.5 text-[11px] font-medium tabular-nums text-muted">
       added by you
     </span>
   );
@@ -64,10 +65,15 @@ export function EvidenceBasisLine({
 
   if (basis.thin) {
     return (
-      <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1 font-mono text-[11px] tabular-nums text-amber-600 dark:text-amber-400">
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[12.5px] tabular-nums text-amber-600 dark:text-amber-400">
         <span>
           early — built on{" "}
-          {figures.map((figure) => figure.label).join(" · ")}
+          {figures.map((figure, index) => (
+            <span key={figure.key}>
+              {index > 0 ? " · " : ""}
+              <DataText text={figure.label} />
+            </span>
+          ))}
           {basis.singleSourceKind ? " from one source" : ""}
         </span>
         {onAddEvidence ? (
@@ -84,7 +90,7 @@ export function EvidenceBasisLine({
   }
 
   return (
-    <div className="mt-2 flex flex-wrap items-baseline gap-x-1.5 gap-y-1 font-mono text-[11px] tabular-nums text-faint">
+    <div className="mt-2 flex flex-wrap items-baseline gap-x-1.5 gap-y-1 text-[12.5px] tabular-nums text-faint">
       {figures.length > 0 ? (
         <span>
           built on{" "}
@@ -96,7 +102,7 @@ export function EvidenceBasisLine({
                 title="Open the underlying evidence"
                 className="hover:text-teal-deep hover:underline"
               >
-                {figure.label}
+                <DataText text={figure.label} />
               </button>
             </span>
           ))}

@@ -113,11 +113,23 @@ export interface BriefingItem {
 export interface ServingConsumer {
   tool: string;
   queriesThisWeek: number;
+  /** Door target on Connections (connections-spec 6.2). */
+  anchor?: McpToolId;
 }
 
+/**
+ * The home Serving line — a summary of the Connections page, never a second
+ * source of truth (connections-spec 6.2): every figure here is a figure there.
+ */
 export interface ServingSummary {
   consumers: readonly ServingConsumer[];
   teammatesReading: number;
+  /** Variant: a tool is set up but silent — "Claude set up, waiting…". */
+  waitingToolName?: string;
+  /** Variant: job 5 on, nothing configured — the invitation line. */
+  invitation?: boolean;
+  /** Quiet upgrade fact: "Maya's Claude tried to write — full seats". */
+  writeAttemptFragment?: string;
 }
 
 export interface HomeBriefing {
@@ -293,6 +305,140 @@ export interface OnboardingCompetitorProposal {
   name: string;
   /** One-line reason, e.g. "Named alongside you on comparison pages". */
   reason: string;
+}
+
+// ---------------------------------------------------------------------------
+// Connections (connections-spec Appendix A)
+// ---------------------------------------------------------------------------
+
+/**
+ * "copilot" (GitHub Copilot in VS Code) is an owner addition to the spec's
+ * four ids — first-class named block, same snippet mechanics as Cursor.
+ */
+export type McpToolId = "claude" | "cursor" | "chatgpt" | "copilot" | "custom";
+
+/** Serving block (1.3). Port default 7317; configurable on conflict (7.2). */
+export interface ServingStatus {
+  httpPort: number;
+  http: "serving" | { failed: "port-in-use" };
+  /** "http://faiths-mbp.local:7317/mcp" — absent while http is failed. */
+  lanAddress?: string;
+  /** Raw-IP fallback line (3.3.2). */
+  lanAddressIp?: string;
+  /** Drives the 2.5 caveat: snippets render cliCommand verbatim. */
+  cliOnPath: boolean;
+  /** "discoveree mcp serve" or the absolute-path form — never aspirational. */
+  cliCommand: string;
+  /** Absent ⇒ segment not rendered — no dash, no "never". */
+  cliLastUsedAgo?: string;
+}
+
+export interface ConsumptionStats {
+  queriesThisWeek: number;
+  lastQueryAgo: string;
+  /** Renders only with >1 client identity: "Desktop 96 · Code 22". */
+  byClient?: readonly { label: string; queries: number }[];
+  /** Top 2 areas; absent ⇒ reading line not rendered (ADR 005 area tags). */
+  readingMostly?: readonly { areaId: ModuleId; label: string }[];
+}
+
+export type ToolRowState =
+  | { kind: "unconfigured" }
+  | { kind: "waiting"; setUpAgo: string; agedDays?: number } // agedDays ⇒ amber
+  | { kind: "connected"; stats: ConsumptionStats; justConnected?: boolean };
+
+export interface McpToolRow {
+  id: McpToolId;
+  name: string; // "Claude", "Custom or my own agents"
+  description: string; // the one-line 2.4 description
+  transport: "stdio" | "http" | "both";
+  state: ToolRowState;
+  /** Teal meta fragment + lede priority 1; door to the owning module's queue. */
+  pendingProposals?: number;
+  /** Config snippet(s) as rendered — already resolved against ServingStatus. */
+  snippets: readonly {
+    filename?: string; // "claude_desktop_config.json"
+    body: string; // mono block content, copy-ready
+  }[];
+  /** "We couldn't find Claude Desktop on this machine…" (2.4). */
+  notFoundNote?: string;
+}
+
+export interface ReaderRow {
+  id: string;
+  /** "Priya's MacBook — Cursor" (hostname + tool) until renamed. */
+  label: string;
+  /** Owner-set name; when present the label renders "Priya's Cursor". */
+  renamedTo?: string;
+  stats: ConsumptionStats;
+}
+
+/** 3.4 — the recorded refusal. Content is NEVER retained (0.5.5). */
+export interface WriteAttempt {
+  id: string;
+  readerLabel: string; // "Maya's Claude"
+  action: "add-competitor" | "log-feedback" | "other";
+  /** Name only — metadata, not the claim's content. */
+  objectName?: string;
+  at: string; // "Tue 14:02"
+  /** Collapsed repeats: "has tried to write 3 times this week". */
+  countThisWeek?: number;
+}
+
+/** 4.2 — the arrival card, rendered inside the owning module's queue. */
+export interface McpArrivalCard {
+  id: string;
+  kind: "competitor-intel" | "feedback";
+  title: string; // "Competitor intel — Harvey"
+  /** The words as shared — verbatim, hairline-ruled, never paraphrased. */
+  verbatim: string;
+  attribution: {
+    via: string; // "Claude" — from MCP client info
+    sharedBy?: string; // asserted, tool-reported (ADR 005)
+    channel?: string; // "#sales-eu"
+    date: string;
+  };
+  /** Known target ⇒ "Accept into <name>'s profile"; absent ⇒ research path. */
+  targetObjectId?: string;
+  targetName?: string;
+  extracted?: readonly { label: string; value: string }[];
+  /** ≥ 1 by construction — at minimum the origin chip. */
+  evidence: readonly EvidenceRef[];
+  /** Feedback variant: "Reads like CSV export limits — its 19th mention." */
+  suggestedThemeLine?: RichText;
+}
+
+export interface CheckingRow {
+  id: string;
+  name: string; // "Jira"
+  meta: string; // "jira.acme.com · 27 roadmap items · checked 2 h ago · daily"
+  testing?: { elapsedS: number };
+  testResult?:
+    | { kind: "works"; line: string }
+    | { kind: "failed"; line: string };
+  pollFailed?: { at: string; reason: string };
+  /** The Feedback-sources door row renders from this variant. */
+  door?: { line: string; href: string };
+}
+
+/**
+ * The "Set up automatically" outcome (never-aspirational: the button claims
+ * success only when the server reports the file actually written).
+ */
+export type ClaudeSetupResult =
+  | { kind: "pending" }
+  | { kind: "written"; configPath: string }
+  | { kind: "failed"; message: string };
+
+export interface ConnectionsOverview {
+  lede: RichText;
+  serving: ServingStatus | null; // null ⇒ job 5 off (block + tools absent)
+  tools: readonly McpToolRow[];
+  readers: readonly ReaderRow[];
+  writeAttempts: readonly WriteAttempt[];
+  checking: readonly CheckingRow[] | null; // null ⇒ no data-tool job
+  /** Sum surfaced in the lede; per-tool splits live on the rows. */
+  pendingProposalsTotal?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -726,6 +872,8 @@ export interface FooterStatus {
   agentsLive?: boolean;
   /** e.g. "MCP serving :7317". Absent on day one. */
   mcp?: string;
+  /** "MCP · not serving" — destructive-quiet tone (connections-spec 6.3). */
+  mcpFailed?: boolean;
   offline: string;
   /** e.g. "Licence to 14 Mar 2027" or "Trial · 9 days left". Absent on day one. */
   licence?: string;
@@ -926,7 +1074,14 @@ export type MockScenarioKey =
   // owner-provided segment, undated mined item and old-dated review states.
   | "customers-day-one"
   | "customers-proposals"
-  | "customers-adoption";
+  | "customers-adoption"
+  // Connections scenarios (connections-spec Part 7): the populated state
+  // carries connected/waiting/unconfigured rows, readers, a write attempt
+  // and the checking block; the rest make each state inspectable.
+  | "connections-day-one"
+  | "connections-aged"
+  | "connections-degraded"
+  | "connections-arrivals";
 
 export interface AppState {
   productName: string;
@@ -964,6 +1119,12 @@ export interface AppState {
   segmentProposals: readonly OnboardingCompetitorProposal[] | null;
   /** An adoption card awaiting review (spec 3.4). */
   segmentAdoption: SegmentAdoptionProposal | null;
+  // Connections (connections-spec)
+  connections: ConnectionsOverview | null;
+  /** §4a arrivals awaiting review — surfaced in their owning modules. */
+  arrivals: readonly McpArrivalCard[];
+  /** Transient "Set up automatically" outcome for the Claude row. */
+  claudeSetup: ClaudeSetupResult | null;
   /** Settings page state — null until the live provider has loaded it. */
   settings: SettingsState | null;
   /** No LLM key at all — agents paused globally (spec 5.3). */

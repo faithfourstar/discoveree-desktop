@@ -5,13 +5,13 @@ import { parseProductId, productBase } from "@/lib/productUrl";
 import { AddProductPage } from "@/pages/AddProductPage";
 import { CompetitorObjectPage } from "@/pages/CompetitorObjectPage";
 import { CompetitorsOverviewPage } from "@/pages/CompetitorsOverviewPage";
+import { ConnectionsPage } from "@/pages/ConnectionsPage";
 import { CustomersOverviewPage } from "@/pages/CustomersOverviewPage";
 import { HomePage } from "@/pages/HomePage";
 import { SegmentObjectPage } from "@/pages/SegmentObjectPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { ThemeObjectPage } from "@/pages/ThemeObjectPage";
 import {
-  ConnectionsPage,
   NotFoundPage,
   RoadmapPage,
   SourcesPage,

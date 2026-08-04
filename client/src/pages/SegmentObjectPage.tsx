@@ -31,7 +31,7 @@ function SectionKicker({
   shared?: boolean | undefined;
 }) {
   return (
-    <div className="mb-3 font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-label">
+    <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-label">
       {children}
       {shared ? (
         <span className="text-ghost"> · shared across your products</span>
@@ -55,7 +55,7 @@ function PersonaCard({
       </p>
       {persona.goals ? (
         <p className="mt-1.5 text-[13.5px] leading-[1.65] text-body">
-          <span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-label">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-label">
             Goals:
           </span>{" "}
           {persona.goals}
@@ -63,7 +63,7 @@ function PersonaCard({
       ) : null}
       {persona.pains ? (
         <p className="mt-1 text-[13.5px] leading-[1.65] text-body">
-          <span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-label">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-label">
             Pains:
           </span>{" "}
           {persona.pains}
@@ -128,7 +128,7 @@ function SegmentOverflowMenu({
           role="menu"
           className="absolute right-0 top-7 z-10 w-[230px] rounded-[9px] border border-edge bg-surface py-1.5 shadow-lg"
         >
-          <div className="px-3.5 pb-1 pt-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-label">
+          <div className="px-3.5 pb-1 pt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-label">
             Set fit
           </div>
           {FIT_WORDS.map((word) => (
@@ -142,7 +142,7 @@ function SegmentOverflowMenu({
                 setOpen(false);
               }}
               className={[
-                "block w-full px-3.5 py-1.5 text-left font-mono text-xs hover:bg-inset",
+                "block w-full px-3.5 py-1.5 text-left text-[12.5px] hover:bg-inset",
                 segment.fit === word ? "text-ink" : "text-body",
               ].join(" ")}
             >
@@ -159,14 +159,14 @@ function SegmentOverflowMenu({
               setOpen(false);
             }}
             className={[
-              "block w-full px-3.5 py-1.5 text-left font-mono text-xs hover:bg-inset",
+              "block w-full px-3.5 py-1.5 text-left text-[12.5px] hover:bg-inset",
               segment.fit === undefined ? "text-ink" : "text-body",
             ].join(" ")}
           >
             unrated
             {segment.fit === undefined ? " ✓" : ""}
           </button>
-          <div className="mt-1.5 border-t border-edge-hairline px-3.5 pb-1 pt-2 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-label">
+          <div className="mt-1.5 border-t border-edge-hairline px-3.5 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-label">
             Change type
           </div>
           {(
@@ -186,7 +186,7 @@ function SegmentOverflowMenu({
                 setOpen(false);
               }}
               className={[
-                "block w-full px-3.5 py-1.5 text-left font-mono text-xs hover:bg-inset",
+                "block w-full px-3.5 py-1.5 text-left text-[12.5px] hover:bg-inset",
                 (segment.type ?? null) === option.value
                   ? "text-ink"
                   : "text-body",
@@ -282,7 +282,7 @@ function SegmentView({ segment }: { segment: SegmentObject }) {
             />
           </span>
         </div>
-        <div className="mb-[26px] flex flex-wrap items-baseline gap-x-1 gap-y-1 font-mono text-xs tabular-nums text-faint">
+        <div className="mb-[26px] flex flex-wrap items-baseline gap-x-1 gap-y-1 text-[12.5px] tabular-nums text-faint">
           <span>
             {metaSegments.join(" · ")}
             {metaSegments.length > 0 ? " ·" : ""}
@@ -383,7 +383,7 @@ function SegmentView({ segment }: { segment: SegmentObject }) {
                     {need.text}
                   </span>
                   {need.satisfied ? (
-                    <span className="whitespace-nowrap font-mono text-xs tabular-nums text-faint">
+                    <span className="data whitespace-nowrap text-xs text-faint">
                       {need.satisfied}
                     </span>
                   ) : null}
@@ -428,7 +428,7 @@ function SegmentView({ segment }: { segment: SegmentObject }) {
                   className="mt-4 text-[12.5px] font-medium text-teal-deep hover:underline"
                 >
                   All{" "}
-                  <span className="font-mono tabular-nums">
+                  <span className="data">
                     {segment.feedbackCount}
                   </span>{" "}
                   items →
@@ -468,7 +468,7 @@ function SegmentView({ segment }: { segment: SegmentObject }) {
         {segment.satisfaction ? (
           <section className="mt-8 border-t border-edge-hairline pt-[26px]">
             <SectionKicker>Satisfaction</SectionKicker>
-            <p className="font-mono text-xs tabular-nums text-body">
+            <p className="data text-xs text-body">
               {[
                 segment.satisfaction.csat !== undefined
                   ? `CSAT ${segment.satisfaction.csat}`
@@ -506,17 +506,15 @@ function SegmentView({ segment }: { segment: SegmentObject }) {
                   key={source.id}
                   className="flex items-baseline gap-3 py-[7px]"
                 >
-                  <span className="font-mono text-xs text-body">
-                    {source.name}
-                  </span>
-                  <span className="flex items-baseline gap-1.5 font-mono text-xs text-faint">
+                  <span className="text-xs text-body">{source.name}</span>
+                  <span className="flex items-baseline gap-1.5 text-xs text-faint">
                     {source.feeds}
                     {source.name === "Your interview" ||
                     source.name === "Added by you" ? (
                       <AddedByYouChip />
                     ) : null}
                   </span>
-                  <span className="ml-auto font-mono text-xs tabular-nums text-faint">
+                  <span className="data ml-auto text-xs text-faint">
                     {source.stamp}
                   </span>
                 </div>

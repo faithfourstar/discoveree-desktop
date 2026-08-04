@@ -14,6 +14,7 @@ import { EvidenceRow } from "@/components/EvidenceChip";
 import { joinNames } from "@/lib/api";
 import { provenanceLine } from "@/mock/competitors";
 import { useAppActions, useAppState } from "@/state/AppStateContext";
+import { DataText } from "@/components/DataText";
 import { useT } from "@/state/locale";
 import type { AddStage, CompetitorProposal } from "@/mock/types";
 import { CapabilityColumns } from "./CapabilityColumns";
@@ -68,9 +69,9 @@ function StageRow({ stage }: { stage: AddStage }) {
           aria-label="In progress"
         />
       ) : stage.status === "done" ? (
-        <span className="flex items-center gap-1.5 font-mono text-[11px] tabular-nums text-faint">
+        <span className="flex items-center gap-1.5 text-[11.5px] text-faint">
           <Check size={13} strokeWidth={2.25} className="text-teal-deep" aria-hidden />
-          {stage.completedIn}
+          <span className="data">{stage.completedIn}</span>
         </span>
       ) : null}
     </div>
@@ -82,8 +83,8 @@ function ProposalCard({ proposal }: { proposal: CompetitorProposal }) {
   const t = useT();
   return (
     <div className="mt-2">
-      <div className="mb-3 font-mono text-xs tabular-nums text-faint">
-        {t(proposal.summaryLine)}
+      <div className="mb-3 text-[12.5px] text-faint">
+        <DataText text={t(proposal.summaryLine)} />
       </div>
       <div className="rounded-[10px] border border-edge bg-surface p-5">
         <div className="mb-1 flex items-baseline gap-3">
@@ -114,8 +115,9 @@ function ProposalCard({ proposal }: { proposal: CompetitorProposal }) {
             {proposal.nameError}
           </p>
         ) : null}
-        <div className="mb-4 font-mono text-xs text-faint">
-          {proposal.domain} · suggested: {proposal.suggestedThreat}
+        <div className="mb-4 text-[12.5px] text-faint">
+          <span className="data">{proposal.domain}</span>
+          <span className="text-sep"> · </span>suggested: {proposal.suggestedThreat}
         </div>
         {proposal.adoption ? (
           // ADR 003 §2.3 adoption variant: the entity already exists in the
@@ -144,7 +146,7 @@ function ProposalCard({ proposal }: { proposal: CompetitorProposal }) {
         ) : null}
         {proposal.differentiators && proposal.differentiators.length > 0 ? (
           <div className="mb-5">
-            <div className="mb-2.5 font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-label">
+            <div className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-label">
               What sets them apart
             </div>
             <div className="flex flex-col gap-1.5 text-[13.5px] leading-[1.65] text-body">

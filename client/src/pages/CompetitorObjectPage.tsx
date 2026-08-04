@@ -6,18 +6,19 @@ import {
   Star,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation, useParams } from "wouter";
 import { CapabilityColumn } from "@/components/competitors/CapabilityColumns";
 import { NewTag } from "@/components/competitors/chips";
 import { SourceLink } from "@/components/competitors/SourceLink";
+import { ArrivalsReviewBlock } from "@/components/connections/ArrivalCard";
+import { DataText } from "@/components/DataText";
 import { ExternalLink } from "@/components/ExternalLink";
 import { VerifiedStamp } from "@/components/competitors/VerifiedStamp";
 import { EmptyState } from "@/components/EmptyState";
 import { EvidenceRow } from "@/components/EvidenceChip";
 import { RichText } from "@/components/RichText";
 import { useProductHref } from "@/lib/productUrl";
-import { countNoun } from "@/lib/text";
 import { competitorSlug } from "@/mock/competitors";
 import { useAppActions, useAppState } from "@/state/AppStateContext";
 import type {
@@ -36,7 +37,7 @@ import type {
 
 function SectionKicker({ children }: { children: string }) {
   return (
-    <div className="mb-3 font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-label">
+    <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-label">
       {children}
     </div>
   );
@@ -46,7 +47,7 @@ function SectionKicker({ children }: { children: string }) {
 function OpenThread({ thread }: { thread: DeepDiveThread }) {
   return (
     <section className="border-l-2 border-teal pl-5">
-      <div className="mb-3 font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-teal">
+      <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-teal">
         Deep dive · {thread.status}
       </div>
       <div className="mb-3 text-[15.5px] font-medium leading-[1.5] text-ink">
@@ -87,7 +88,7 @@ function CoverageList({
   const visible = showAll ? items : items.slice(0, 6);
   return (
     <div className="flex-1">
-      <div className="mb-2.5 font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-label">
+      <div className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-label">
         {heading}
       </div>
       <div className="text-[13.5px] leading-[1.75] text-body">
@@ -108,7 +109,7 @@ function CoverageList({
             className="mt-1 text-[12.5px] font-medium text-teal-deep hover:underline"
           >
             Show all{" "}
-            <span className="font-mono tabular-nums">{items.length}</span>
+            <span className="data">{items.length}</span>
           </button>
         ) : null}
       </div>
@@ -127,12 +128,12 @@ function CoverageSection({ coverage }: { coverage: FeatureCoverage }) {
         <button
           type="button"
           title="Open the filtered feature inventory"
-          className="font-mono text-[0.88em] tabular-nums text-teal-deep hover:underline"
+          className="data text-teal-deep hover:underline"
         >
           {coverage.covered}
         </button>{" "}
         of the{" "}
-        <span className="font-mono text-[0.88em] tabular-nums">
+        <span className="data">
           {coverage.inventoryTotal}
         </span>{" "}
         features in your inventory, and{" "}
@@ -140,7 +141,7 @@ function CoverageSection({ coverage }: { coverage: FeatureCoverage }) {
           type="button"
           onClick={() => setExpanded((value) => !value)}
           aria-expanded={expanded}
-          className="font-mono text-[0.88em] tabular-nums text-teal-deep hover:underline"
+          className="data text-teal-deep hover:underline"
         >
           {coverage.uniqueToThem}
         </button>{" "}
@@ -179,8 +180,8 @@ function BuyersSection({ review }: { review: ReviewEvidence }) {
             <p className="text-[13.5px] leading-[1.65] text-body">
               “{quote.text}”
             </p>
-            <footer className="mt-1 font-mono text-[11px] text-faint">
-              {quote.attribution}
+            <footer className="mt-1 text-[12.5px] text-faint">
+              <DataText text={quote.attribution} />
             </footer>
           </blockquote>
         ))}
@@ -236,9 +237,14 @@ function RecentChangesSection({
                 {change.description}
               </p>
             ) : null}
-            <p className="mt-1 font-mono text-[11px] text-faint">
+            <p className="mt-1 text-[12.5px] text-faint">
               {change.changeType}
-              {change.detectedOn ? ` · ${change.detectedOn}` : ""}
+              {change.detectedOn ? (
+                <>
+                  {" · "}
+                  <span className="data">{change.detectedOn}</span>
+                </>
+              ) : null}
               <SourceLink href={change.sourceUrl} />
             </p>
           </div>
@@ -269,7 +275,7 @@ function KeyFeaturesSection({ items }: { items: readonly CitedFeature[] }) {
             className="mt-1 text-[12.5px] font-medium text-teal-deep hover:underline"
           >
             Show all{" "}
-            <span className="font-mono tabular-nums">{items.length}</span>
+            <span className="data">{items.length}</span>
           </button>
         ) : null}
       </div>
@@ -288,14 +294,14 @@ function MarketsSection({ items }: { items: readonly CitedMarket[] }) {
             <ExternalLink
               key={item.market}
               href={item.sourceUrl}
-              className="whitespace-nowrap rounded-[5px] bg-chip px-[7px] py-1 font-mono text-[10.5px] font-medium text-muted hover:text-teal-deep hover:underline"
+              className="whitespace-nowrap rounded-[5px] bg-chip px-[7px] py-1 text-[11px] font-medium tabular-nums text-muted hover:text-teal-deep hover:underline"
             >
               {item.market}
             </ExternalLink>
           ) : (
             <span
               key={item.market}
-              className="whitespace-nowrap rounded-[5px] bg-chip px-[7px] py-1 font-mono text-[10.5px] font-medium text-muted"
+              className="whitespace-nowrap rounded-[5px] bg-chip px-[7px] py-1 text-[11px] font-medium tabular-nums text-muted"
             >
               {item.market}
             </span>
@@ -334,21 +340,19 @@ function SourcesSection({ sources }: { sources: readonly SourceRow[] }) {
                 className="translate-y-[2px] text-faint"
                 aria-hidden
               />
-              <span className="font-mono text-xs text-body group-hover:underline">
-                {source.name}
+              <span className="text-xs text-body group-hover:underline">
+                <span className="data">{source.name}</span>
               </span>
-              <span className="font-mono text-xs text-faint">
-                {source.feeds}
-              </span>
+              <span className="text-xs text-faint">{source.feeds}</span>
               <span
                 className={[
-                  "ml-auto font-mono text-xs tabular-nums",
+                  "ml-auto text-xs",
                   source.stale
                     ? "text-amber-600 dark:text-amber-400"
                     : "text-faint",
                 ].join(" ")}
               >
-                {source.stamp}
+                <DataText text={source.stamp} />
               </span>
             </button>
           );
@@ -433,7 +437,7 @@ function OverflowMenu({
               ? "Mark as adjacent"
               : "Mark as direct"}
           </button>
-          <div className="mt-1.5 border-t border-edge-hairline px-3.5 pb-1 pt-2 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-label">
+          <div className="mt-1.5 border-t border-edge-hairline px-3.5 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-label">
             Set threat
           </div>
           {threatWords.map((word) => (
@@ -447,7 +451,7 @@ function OverflowMenu({
                 setOpen(false);
               }}
               className={[
-                "block w-full px-3.5 py-1.5 text-left font-mono text-xs hover:bg-inset",
+                "block w-full px-3.5 py-1.5 text-left text-[12.5px] hover:bg-inset",
                 competitor.threat === word ? "text-ink" : "text-body",
               ].join(" ")}
             >
@@ -554,14 +558,26 @@ function CompetitorView({ competitor }: { competitor: CompetitorObject }) {
     ensureDetailRef.current(competitor.id);
   }, [competitor.id]);
 
-  const metaSegments: string[] = [competitor.domain, competitor.threat].filter(
-    Boolean,
-  );
+  const sep = <span className="text-sep"> · </span>;
+  const metaSegments: ReactNode[] = [];
+  if (competitor.domain) {
+    metaSegments.push(<span className="data">{competitor.domain}</span>);
+  }
+  metaSegments.push(competitor.threat);
   if (competitor.sentiment !== undefined) {
-    metaSegments.push(`sentiment ${competitor.sentiment}`);
+    metaSegments.push(
+      <>
+        sentiment <span className="data">{competitor.sentiment}</span>
+      </>,
+    );
   }
   if (competitor.reviewCount !== undefined) {
-    metaSegments.push(countNoun(competitor.reviewCount, "review"));
+    metaSegments.push(
+      <>
+        <span className="data">{competitor.reviewCount}</span>{" "}
+        {competitor.reviewCount === 1 ? "review" : "reviews"}
+      </>,
+    );
   }
 
   return (
@@ -571,7 +587,7 @@ function CompetitorView({ competitor }: { competitor: CompetitorObject }) {
           <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-ink">
             {competitor.name}
           </h1>
-          <span className="rounded bg-teal-tint px-1.5 py-1 font-mono text-[10px] font-semibold text-teal-dark">
+          <span className="rounded bg-teal-tint px-1.5 py-1 text-[10px] [font-weight:650] uppercase tracking-[0.06em] text-teal-dark">
             {competitor.classification}
           </span>
           <span className="ml-auto flex items-center gap-2">
@@ -587,8 +603,16 @@ function CompetitorView({ competitor }: { competitor: CompetitorObject }) {
             />
           </span>
         </div>
-        <div className="mb-[26px] flex items-baseline gap-1 font-mono text-xs tabular-nums text-faint">
-          <span>{metaSegments.join(" · ")} ·</span>
+        <div className="mb-[26px] flex items-baseline gap-1 text-[12.5px] text-faint">
+          <span>
+            {metaSegments.map((segment, index) => (
+              <span key={index}>
+                {index > 0 ? sep : null}
+                {segment}
+              </span>
+            ))}
+            {" ·"}
+          </span>
           <VerifiedStamp
             verifiedAgo={competitor.verifiedAgo}
             stale={competitor.stale}
@@ -601,6 +625,14 @@ function CompetitorView({ competitor }: { competitor: CompetitorObject }) {
             onRetry={() => actions.checkCompetitor(competitor.id)}
           />
         </div>
+
+        <ArrivalsReviewBlock
+          arrivals={state.arrivals.filter(
+            (card) =>
+              card.kind === "competitor-intel" &&
+              card.targetObjectId === competitor.id,
+          )}
+        />
 
         <div
           className={

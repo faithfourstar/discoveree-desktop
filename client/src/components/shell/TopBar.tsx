@@ -10,8 +10,40 @@ import {
 } from "@/lib/productUrl";
 import { moduleRegistry } from "@/modules/registry";
 import { competitorSlug } from "@/mock/competitors";
-import { useAppState } from "@/state/AppStateContext";
+import { useAppState, useMockLatch } from "@/state/AppStateContext";
+import { useT } from "@/state/locale";
 import { useTheme } from "@/state/theme";
+
+/**
+ * The demo-data indicator: renders on every page while the ?state= latch is
+ * active — demo mode must be visible and leavable, never silent. Quiet chip,
+ * not a banner; the exit control clears the latch and lands on the real
+ * workspace.
+ */
+function DemoDataChip() {
+  const latch = useMockLatch();
+  const t = useT();
+  if (!latch.active) {
+    return null;
+  }
+  return (
+    <span
+      title={latch.stateKey ? `?state=${latch.stateKey}` : undefined}
+      className="ml-3 flex flex-none items-center gap-2 rounded-[6px] border border-amber-500/20 bg-amber-500/5 px-2 py-1"
+    >
+      <span className="text-[10px] [font-weight:650] uppercase tracking-[0.06em] text-amber-600 dark:text-amber-400">
+        {t("Viewing demo data")}
+      </span>
+      <button
+        type="button"
+        onClick={latch.exit}
+        className="whitespace-nowrap text-[11.5px] font-medium text-teal-deep hover:underline"
+      >
+        {t("Switch to your workspace")}
+      </button>
+    </span>
+  );
+}
 
 function useBreadcrumb(): ReactNode {
   const [location] = useLocation();
@@ -180,6 +212,7 @@ export function TopBar() {
     <header className="flex h-12 flex-none items-center border-b border-edge bg-surface px-5">
       <ProductSwitcher />
       <span className="text-xs font-medium text-muted">{breadcrumb}</span>
+      <DemoDataChip />
 
       {!dayOne ? (
         <button
@@ -190,8 +223,8 @@ export function TopBar() {
           <span className="text-[12.5px] text-faint">
             Go anywhere, ask anything
           </span>
-          <span className="font-mono text-[11px] font-medium text-ghost">
-            ⌘K
+          <span className="text-[11.5px] font-medium text-ghost">
+            <span className="data">⌘K</span>
           </span>
         </button>
       ) : (
@@ -200,8 +233,8 @@ export function TopBar() {
 
       <span className="flex items-center gap-3">
         {!dayOne ? (
-          <span className="font-mono text-[11px] text-faint">
-            {formatToday()}
+          <span className="text-[11.5px] text-faint">
+            <span className="data">{formatToday()}</span>
           </span>
         ) : null}
         <button

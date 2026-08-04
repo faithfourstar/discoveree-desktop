@@ -4,6 +4,7 @@ import type {
   AgentFrequency,
   AppState,
   FitWord,
+  McpToolId,
   ModuleId,
   ProviderId,
   ThreatWord,
@@ -78,6 +79,23 @@ export interface AppActions {
   addSegmentProposals(ids: readonly string[]): void;
   acceptSegmentAdoption(): void;
   dismissSegmentAdoption(): void;
+  // Connections (connections-spec)
+  /** Accept merges the claim with mcp provenance into the target object. */
+  acceptArrival(id: string): void;
+  dismissArrival(id: string): void;
+  /** Unknown competitor: routes into the add flow pre-filled (spec 4.2). */
+  researchArrival(id: string): void;
+  dismissWriteAttempt(id: string): void;
+  renameReader(id: string, name: string): void;
+  removeReader(id: string): void;
+  /** The user's own "I've pasted it in" assertion — waiting, never connected. */
+  setUpTool(id: McpToolId): void;
+  forgetTool(id: McpToolId): void;
+  /**
+   * "Set up automatically": writes Claude's config via the server; claims
+   * success only when the file was actually written (state.claudeSetup).
+   */
+  setUpClaudeAutomatically(): void;
   // Products (ADR 003)
   /**
    * "Add another product" — day-one-style URL prompt. Creates the product
@@ -152,6 +170,15 @@ export const defaultActions: AppActions = {
   addSegmentProposals: noop,
   acceptSegmentAdoption: noop,
   dismissSegmentAdoption: noop,
+  acceptArrival: noop,
+  dismissArrival: noop,
+  researchArrival: noop,
+  dismissWriteAttempt: noop,
+  renameReader: noop,
+  removeReader: noop,
+  setUpTool: noop,
+  forgetTool: noop,
+  setUpClaudeAutomatically: noop,
   createProduct: noop,
   saveLlmKey: noop,
   testLlmKey: noop,

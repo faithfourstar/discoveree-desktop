@@ -38,10 +38,12 @@ export function VerifiedStamp({
 }) {
   const [pausedNote, setPausedNote] = useState(false);
 
+  // Typography ruling §3 (stamps): keyword in Inter, value in mono `.data`.
   if (checkingElapsedS !== undefined) {
     return (
-      <span className="whitespace-nowrap font-mono text-xs tabular-nums text-teal-deep">
-        {checkingLabel} · {formatElapsed(checkingElapsedS)}
+      <span className="whitespace-nowrap text-xs text-teal-deep">
+        {checkingLabel} ·{" "}
+        <span className="data">{formatElapsed(checkingElapsedS)}</span>
       </span>
     );
   }
@@ -49,9 +51,14 @@ export function VerifiedStamp({
   if (lastRunFailed) {
     return (
       <span className="flex flex-wrap items-baseline justify-end gap-x-2 gap-y-0.5">
-        <span className="whitespace-nowrap font-mono text-xs text-red-700 dark:text-red-400">
+        <span className="whitespace-nowrap text-xs text-red-700 dark:text-red-400">
           {lastRunFailed.reason}
-          {lastRunFailed.at ? ` · ${lastRunFailed.at}` : ""}
+          {lastRunFailed.at ? (
+            <>
+              {" · "}
+              <span className="data">{lastRunFailed.at}</span>
+            </>
+          ) : null}
         </span>
         <button
           type="button"
@@ -75,8 +82,9 @@ export function VerifiedStamp({
   }
 
   if (unverified) {
+    // Words, not data (ruling §3): the whole label is Inter.
     return (
-      <span className="whitespace-nowrap font-mono text-xs text-amber-600 dark:text-amber-400">
+      <span className="whitespace-nowrap text-xs text-amber-600 dark:text-amber-400">
         {unverifiedLabel}
       </span>
     );
@@ -101,7 +109,7 @@ export function VerifiedStamp({
       <button
         type="button"
         onClick={handleClick}
-        className="group/stamp whitespace-nowrap text-right font-mono text-xs tabular-nums"
+        className="group/stamp whitespace-nowrap text-right text-xs"
         aria-label="Run the refresh agent now"
       >
         <span
@@ -110,7 +118,12 @@ export function VerifiedStamp({
             stale ? "text-amber-600 dark:text-amber-400" : "text-faint",
           ].join(" ")}
         >
-          {verb} {verifiedAgo}
+          {/* The verb is a word; the leading time fragment of the stamp is
+              the value; any trailing copy ("· nothing changed") is words. */}
+          {verb} <span className="data">{verifiedAgo.split(" · ")[0]}</span>
+          {verifiedAgo.includes(" · ")
+            ? ` · ${verifiedAgo.split(" · ").slice(1).join(" · ")}`
+            : ""}
         </span>
         <span className="hidden text-teal-deep group-hover/stamp:inline">
           {" "}

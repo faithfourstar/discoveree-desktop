@@ -1,5 +1,5 @@
 import { MoreHorizontal } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "wouter";
 import { NewTag } from "@/components/competitors/chips";
 import { VerifiedStamp } from "@/components/competitors/VerifiedStamp";
@@ -9,6 +9,7 @@ import {
 } from "@/components/customers/LogFeedbackFlow";
 import { Verbatim } from "@/components/customers/ProvenanceLine";
 import { ConfirmDialogue } from "@/components/ConfirmDialogue";
+import { DataText } from "@/components/DataText";
 import { EmptyState } from "@/components/EmptyState";
 import { EvidenceRow } from "@/components/EvidenceChip";
 import { useProductHref } from "@/lib/productUrl";
@@ -21,7 +22,7 @@ import type { ThemeObject } from "@/mock/types";
 
 function SectionKicker({ children }: { children: string }) {
   return (
-    <div className="mb-3 font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-label">
+    <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-label">
       {children}
     </div>
   );
@@ -101,7 +102,7 @@ function ThemeOverflowMenu({
             </>
           ) : (
             <>
-              <div className="px-3.5 pb-1 pt-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-label">
+              <div className="px-3.5 pb-1 pt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-label">
                 Merge {theme.name} into
               </div>
               {otherThemes.map((other) => (
@@ -159,20 +160,33 @@ function ThemeView({ theme }: { theme: ThemeObject }) {
     .filter((row) => row.id !== theme.id)
     .map((row) => ({ id: row.id, name: row.name }));
 
-  const metaSegments: string[] = [
-    `${theme.mentionCount} mention${theme.mentionCount === 1 ? "" : "s"}`,
+  // Typography ruling §3: one Inter meta run; figures and dates are the
+  // only `.data` tokens — trend and lifecycle judgments are words.
+  const metaSegments: ReactNode[] = [
+    <>
+      <span className="data">{theme.mentionCount}</span>{" "}
+      {theme.mentionCount === 1 ? "mention" : "mentions"}
+    </>,
   ];
   if (theme.sentimentMixed) {
     metaSegments.push("sentiment mixed");
   } else if (theme.sentiment !== undefined) {
-    metaSegments.push(`sentiment ${theme.sentiment}`);
+    metaSegments.push(
+      <>
+        sentiment <span className="data">{theme.sentiment}</span>
+      </>,
+    );
   }
   if (theme.trend) {
     metaSegments.push(theme.trend);
   }
   metaSegments.push(theme.lifecycle);
   if (theme.firstHeard) {
-    metaSegments.push(`first heard ${theme.firstHeard}`);
+    metaSegments.push(
+      <>
+        first heard <span className="data">{theme.firstHeard}</span>
+      </>,
+    );
   }
 
   const visibleItems = showAll ? theme.items : theme.items.slice(0, 5);
@@ -240,8 +254,16 @@ function ThemeView({ theme }: { theme: ThemeObject }) {
             />
           </span>
         </div>
-        <div className="mb-[26px] flex items-baseline gap-1 font-mono text-xs tabular-nums text-faint">
-          <span>{metaSegments.join(" · ")} ·</span>
+        <div className="mb-[26px] flex items-baseline gap-1 text-[12.5px] text-faint">
+          <span>
+            {metaSegments.map((segment, index) => (
+              <span key={index}>
+                {index > 0 ? <span className="text-sep"> · </span> : null}
+                {segment}
+              </span>
+            ))}
+            {" ·"}
+          </span>
           <VerifiedStamp
             verifiedAgo={theme.refreshedAgo}
             stale={theme.stale}
@@ -286,7 +308,7 @@ function ThemeView({ theme }: { theme: ThemeObject }) {
               className="mt-4 text-[12.5px] font-medium text-teal-deep hover:underline"
             >
               All{" "}
-              <span className="font-mono tabular-nums">
+              <span className="data">
                 {theme.mentionCount}
               </span>{" "}
               mentions →
@@ -302,13 +324,16 @@ function ThemeView({ theme }: { theme: ThemeObject }) {
                 <Link
                   key={row.segmentId}
                   href={productHref(segmentPath(row.segmentId))}
-                  className="font-mono text-xs tabular-nums text-body hover:text-teal-deep hover:underline"
+                  className="text-[12.5px] text-body hover:text-teal-deep hover:underline"
                 >
-                  {row.name} · {row.mentions} mention
-                  {row.mentions === 1 ? "" : "s"}
-                  {row.sentiment !== undefined
-                    ? ` · sentiment ${row.sentiment}`
-                    : ""}
+                  {row.name} · <span className="data">{row.mentions}</span>{" "}
+                  {row.mentions === 1 ? "mention" : "mentions"}
+                  {row.sentiment !== undefined ? (
+                    <>
+                      {" · sentiment "}
+                      <span className="data">{row.sentiment}</span>
+                    </>
+                  ) : null}
                 </Link>
               ))}
             </div>
@@ -324,21 +349,19 @@ function ThemeView({ theme }: { theme: ThemeObject }) {
                   key={source.id}
                   className="flex items-baseline gap-3 py-[7px]"
                 >
-                  <span className="font-mono text-xs text-body">
-                    {source.name}
+                  <span className="text-xs text-body">
+                    <span className="data">{source.name}</span>
                   </span>
-                  <span className="font-mono text-xs text-faint">
-                    {source.feeds}
-                  </span>
+                  <span className="text-xs text-faint">{source.feeds}</span>
                   <span
                     className={[
-                      "ml-auto font-mono text-xs tabular-nums",
+                      "ml-auto text-xs",
                       source.stale
                         ? "text-amber-600 dark:text-amber-400"
                         : "text-faint",
                     ].join(" ")}
                   >
-                    {source.stamp}
+                    <DataText text={source.stamp} />
                   </span>
                 </div>
               ))}

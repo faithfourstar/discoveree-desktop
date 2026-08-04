@@ -10,28 +10,39 @@ export function themePath(id: string): string {
   return `/customers/themes/${id.split(":").pop() ?? id}`;
 }
 
-/** The mono meta line — absent figures leave no gap, no dash, no zero. */
+/**
+ * The meta line — absent figures leave no gap, no dash, no zero.
+ * Typography ruling §3: one Inter 12.5px run; figures are the only mono
+ * (`.data`) tokens — trend and lifecycle judgments are words.
+ */
 export function ThemeMetaLine({ row }: { row: ThemeRow }) {
-  const segments: string[] = [
-    `${row.mentionCount} mention${row.mentionCount === 1 ? "" : "s"}`,
-  ];
-  if (row.sentimentMixed) {
-    segments.push("sentiment mixed");
-  } else if (row.sentiment !== undefined) {
-    segments.push(`sentiment ${row.sentiment}`);
-  }
-  if (row.trend) {
-    segments.push(row.trend);
-  }
-  if (row.sourceKindCount !== undefined) {
-    segments.push(
-      `${row.sourceKindCount} source kind${row.sourceKindCount === 1 ? "" : "s"}`,
-    );
-  }
-  segments.push(row.lifecycle);
+  const sep = <span className="text-sep"> · </span>;
   return (
-    <div className="font-mono text-xs tabular-nums text-faint">
-      {segments.join(" · ")}
+    <div className="text-[12.5px] text-faint">
+      <span className="data">{row.mentionCount}</span>{" "}
+      {row.mentionCount === 1 ? "mention" : "mentions"}
+      {row.sentimentMixed ? (
+        <>{sep}sentiment mixed</>
+      ) : row.sentiment !== undefined ? (
+        <>
+          {sep}sentiment <span className="data">{row.sentiment}</span>
+        </>
+      ) : null}
+      {row.trend ? (
+        <>
+          {sep}
+          {row.trend}
+        </>
+      ) : null}
+      {row.sourceKindCount !== undefined ? (
+        <>
+          {sep}
+          <span className="data">{row.sourceKindCount}</span> source{" "}
+          {row.sourceKindCount === 1 ? "kind" : "kinds"}
+        </>
+      ) : null}
+      {sep}
+      {row.lifecycle}
     </div>
   );
 }
@@ -129,7 +140,7 @@ export function ThemeRowCard({
         <div className="mt-2.5">
           <p className="text-[15px] leading-[1.6] text-amber-600 dark:text-amber-400">
             Not refreshed in{" "}
-            <span className="font-mono text-[0.88em] tabular-nums">
+            <span className="data">
               {row.staleDays ?? 8}
             </span>{" "}
             days — new feedback may be waiting to file.{" "}
@@ -153,11 +164,11 @@ export function ThemeRowCard({
       ) : row.quietSince ? (
         <p className="mt-2.5 text-[15px] leading-[1.6] text-body">
           No new mentions since{" "}
-          <span className="font-mono text-[0.88em] tabular-nums">
+          <span className="data">
             {row.quietSince}
           </span>{" "}
           — holding at{" "}
-          <span className="font-mono text-[0.88em] tabular-nums">
+          <span className="data">
             {row.mentionCount}
           </span>
           .

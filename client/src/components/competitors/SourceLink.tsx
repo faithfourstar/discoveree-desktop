@@ -8,7 +8,7 @@ export function SourceLink({ href }: { href: string | null }) {
   return (
     <ExternalLink
       href={href}
-      className="ml-2 whitespace-nowrap font-mono text-[10.5px] font-medium text-faint hover:text-teal-deep hover:underline"
+      className="ml-2 whitespace-nowrap text-[11px] font-medium tabular-nums text-faint hover:text-teal-deep hover:underline"
     >
       source
     </ExternalLink>

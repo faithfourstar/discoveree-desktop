@@ -2,24 +2,39 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { EvidenceRow } from "@/components/EvidenceChip";
 import { useProductHref } from "@/lib/productUrl";
-import { countNoun } from "@/lib/text";
 import { competitorPath } from "@/mock/competitors";
 import type { CompetitorRow } from "@/mock/types";
 import { ClassificationBadge, NewTag } from "./chips";
 import { VerifiedStamp } from "./VerifiedStamp";
 
-/** The mono meta line: absent figures leave no gap, no dash, no zero. */
+/**
+ * The meta line: absent figures leave no gap, no dash, no zero.
+ * Typography ruling §7: one Inter 12.5px run; domain and figures are the
+ * only mono (`.data`) tokens — judgment words ("big threat") are words.
+ */
 export function MetaLine({ row }: { row: CompetitorRow }) {
-  const segments: string[] = [row.domain, row.threat].filter(Boolean);
-  if (row.sentiment !== undefined) {
-    segments.push(`sentiment ${row.sentiment}`);
-  }
-  if (row.reviewCount !== undefined) {
-    segments.push(countNoun(row.reviewCount, "review"));
-  }
+  const sep = <span className="text-sep"> · </span>;
   return (
-    <div className="font-mono text-xs tabular-nums text-faint">
-      {segments.join(" · ")}
+    <div className="text-[12.5px] text-faint">
+      {row.domain ? (
+        <>
+          <span className="data">{row.domain}</span>
+          {sep}
+        </>
+      ) : null}
+      {row.threat}
+      {row.sentiment !== undefined ? (
+        <>
+          {sep}sentiment <span className="data">{row.sentiment}</span>
+        </>
+      ) : null}
+      {row.reviewCount !== undefined ? (
+        <>
+          {sep}
+          <span className="data">{row.reviewCount}</span>{" "}
+          {row.reviewCount === 1 ? "review" : "reviews"}
+        </>
+      ) : null}
     </div>
   );
 }
@@ -120,7 +135,7 @@ export function CompetitorRowCard({
         <div className="mt-2.5">
           <p className="text-[15px] leading-[1.6] text-amber-600 dark:text-amber-400">
             Not verified in{" "}
-            <span className="font-mono text-[0.88em] tabular-nums">
+            <span className="data">
               {row.staleDays ?? 15}
             </span>{" "}
             days — worth a fresh look.{" "}
@@ -144,7 +159,7 @@ export function CompetitorRowCard({
       ) : !compressed && row.confirmedQuietSince ? (
         <p className="mt-2.5 text-[15px] leading-[1.6] text-body">
           Nothing new since{" "}
-          <span className="font-mono text-[0.88em] tabular-nums">
+          <span className="data">
             {row.confirmedQuietSince}
           </span>{" "}
           — pricing, changelog and reviews all confirmed.

@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { Link } from "wouter";
+import { DataText } from "@/components/DataText";
 import { ExternalLink } from "@/components/ExternalLink";
 import {
   onSettingsAnchor,
@@ -14,7 +15,6 @@ import {
 } from "@/lib/anchors";
 import { isDisplayLocaleSetting } from "@/lib/locale";
 import { useProductHref } from "@/lib/productUrl";
-import { countNoun } from "@/lib/text";
 import { formatElapsed } from "@/mock/competitors";
 import {
   agentMeta,
@@ -58,14 +58,14 @@ const LICENCE_TERMS_URL =
 /** Inline mono figure in prose — the RichText "mono" treatment. */
 function Fig({ children }: { children: ReactNode }) {
   return (
-    <span className="font-mono text-[0.88em] tabular-nums">{children}</span>
+    <span className="data">{children}</span>
   );
 }
 
 function Kicker({ children }: { children: ReactNode }) {
   const t = useT();
   return (
-    <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.09em] text-label">
+    <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-label">
       {typeof children === "string" ? t(children) : children}
     </span>
   );
@@ -73,7 +73,7 @@ function Kicker({ children }: { children: ReactNode }) {
 
 function WebSearchTag() {
   return (
-    <span className="rounded-[4px] bg-chip px-[5px] py-[1.5px] font-mono text-[10px] font-medium uppercase tracking-[0.06em] text-faint">
+    <span className="rounded-[4px] bg-chip px-[5px] py-[1.5px] text-[10px] [font-weight:650] uppercase tracking-[0.06em] text-faint">
       Web search
     </span>
   );
@@ -455,7 +455,7 @@ function ProviderRow({
   if (row.testing) {
     trailing = (
       <span className="text-teal-deep">
-        testing · {formatElapsed(row.testing.elapsedS)}
+        testing · <span className="data">{formatElapsed(row.testing.elapsedS)}</span>
       </span>
     );
   } else if (row.testResult?.kind === "works") {
@@ -508,7 +508,7 @@ function ProviderRow({
           {row.testResult.detail ? (
             <>
               {name} answered with an error —{" "}
-              <span className="font-mono">{row.testResult.detail}</span>
+              <span className="data">{row.testResult.detail}</span>
             </>
           ) : (
             (row.testResult.line ?? `${name} answered with an error.`)
@@ -587,12 +587,22 @@ function ProviderRow({
       </div>
 
       {showSaved && !entryOpen ? (
-        <div className="mt-1 font-mono text-xs tabular-nums text-faint">
-          {saved.mask}
+        <div className="mt-1 text-[12.5px] text-faint">
+          <span className="mask">{saved.mask}</span>
           {trailing ? <> · {trailing}</> : saved.verified ? (
             <>
-              {saved.addedAt ? <> · added {saved.addedAt}</> : null}
-              {saved.lastUsedAgo ? <> · last used {saved.lastUsedAgo}</> : null}
+              {saved.addedAt ? (
+                <>
+                  {" · added "}
+                  <span className="data">{saved.addedAt}</span>
+                </>
+              ) : null}
+              {saved.lastUsedAgo ? (
+                <>
+                  {" · last used "}
+                  <span className="data">{saved.lastUsedAgo}</span>
+                </>
+              ) : null}
             </>
           ) : (
             <> · saved · not yet verified</>
@@ -719,7 +729,7 @@ function QuietSelect({
       value={value}
       onChange={(event) => onChange(event.target.value)}
       aria-label={ariaLabel}
-      className="cursor-pointer appearance-none rounded-[5px] border border-transparent bg-transparent font-mono text-xs text-faint outline-none hover:border-edge-hairline hover:text-muted focus:border-edge-input"
+      className="cursor-pointer appearance-none rounded-[5px] border border-transparent bg-transparent text-xs text-faint outline-none hover:border-edge-hairline hover:text-muted focus:border-edge-input"
     >
       {options.map((option) => (
         <option key={option.value} value={option.value}>
@@ -780,20 +790,18 @@ function AgentRow({
   let stamp: ReactNode = null;
   if (row.running) {
     stamp = (
-      <span className="whitespace-nowrap font-mono text-xs tabular-nums text-teal-deep">
-        running · {formatElapsed(row.running.elapsedS)}
+      <span className="whitespace-nowrap text-xs text-teal-deep">
+        running · <span className="data">{formatElapsed(row.running.elapsedS)}</span>
       </span>
     );
   } else if (paused) {
     stamp = (
-      <span className="whitespace-nowrap font-mono text-xs text-faint">
-        paused
-      </span>
+      <span className="whitespace-nowrap text-xs text-faint">paused</span>
     );
   } else if (row.nextRun) {
     stamp = (
-      <span className="whitespace-nowrap font-mono text-xs tabular-nums text-faint">
-        next {row.nextRun}
+      <span className="whitespace-nowrap text-xs text-faint">
+        next <span className="data">{row.nextRun}</span>
       </span>
     );
   }
@@ -822,9 +830,7 @@ function AgentRow({
         ) : null}
         <span className="ml-auto flex items-baseline gap-2.5">
           {row.frequency === "after-gathering" ? (
-            <span className="font-mono text-xs text-faint">
-              after gathering
-            </span>
+            <span className="text-xs text-faint">after gathering</span>
           ) : (
             <QuietSelect
               value={row.frequency}
@@ -917,9 +923,10 @@ function AgentRow({
       ) : null}
 
       {failed ? (
-        <div className="mt-1 flex flex-wrap items-baseline gap-x-2 font-mono text-xs text-red-700 dark:text-red-400">
+        <div className="mt-1 flex flex-wrap items-baseline gap-x-2 text-[12.5px] text-red-700 dark:text-red-400">
           <span>
-            failed {row.lastRun?.at} · {failed.reason}
+            failed <span className="data">{row.lastRun?.at}</span> ·{" "}
+            {failed.reason}
           </span>
           <button
             type="button"
@@ -936,8 +943,8 @@ function AgentRow({
           </button>
         </div>
       ) : row.lastRun ? (
-        <div className="mt-1 font-mono text-xs tabular-nums text-faint">
-          last ran {row.lastRun.at}
+        <div className="mt-1 text-[12.5px] text-faint">
+          last ran <span className="data">{row.lastRun.at}</span>
           {row.lastRun.findings !== undefined ? (
             row.lastRun.findings > 0 ? (
               <>
@@ -947,7 +954,8 @@ function AgentRow({
                   href={productHref("/")}
                   className="text-faint underline decoration-edge-input underline-offset-2 hover:text-teal-deep"
                 >
-                  {countNoun(row.lastRun.findings, "change")} found
+                  <span className="data">{row.lastRun.findings}</span>{" "}
+                  {row.lastRun.findings === 1 ? "change" : "changes"} found
                 </Link>
               </>
             ) : (
@@ -1086,13 +1094,13 @@ function ConnectionsBlock({ settings }: { settings: SettingsState }) {
             ) : null}
             .
           </p>
-          <p className="mt-1.5 font-mono text-xs tabular-nums text-faint">
-            {[
+          <p className="mt-1.5 text-[12.5px] text-faint">
+            <DataText text={[
               ...serving.map(
                 (tool) => `${tool.name} · ${tool.queriesThisWeek} queries this week`,
               ),
               ...checking.map((tool) => `${tool.name} · polled ${tool.polledAgo}`),
-            ].join(" · ")}
+            ].join(" · ")} />
           </p>
         </>
       ) : (
@@ -1304,14 +1312,17 @@ function LicenceBlock({ settings }: { settings: SettingsState }) {
         {licence.kind === "trial" ? (
           <span
             className={[
-              "ml-auto font-mono text-xs tabular-nums",
+              "ml-auto text-xs",
               licence.daysLeft <= 3
                 ? "text-amber-600 dark:text-amber-400"
                 : "text-faint",
             ].join(" ")}
           >
-            trial · {licence.daysLeft}{" "}
-            {licence.daysLeft === 1 ? "day" : "days"} left
+            trial ·{" "}
+            <span className="data">
+              {licence.daysLeft} {licence.daysLeft === 1 ? "day" : "days"}
+            </span>{" "}
+            left
           </span>
         ) : null}
       </div>
@@ -1365,10 +1376,15 @@ function LicenceBlock({ settings }: { settings: SettingsState }) {
               </>
             ) : null}
           </p>
-          <div className="mt-2 flex items-baseline gap-3 font-mono text-xs tabular-nums text-faint">
+          <div className="mt-2 flex items-baseline gap-3 text-[12.5px] text-faint">
             <span>
-              {licence.keyMask}
-              {licence.enteredOn ? <> · entered {licence.enteredOn}</> : null}
+              <span className="mask">{licence.keyMask}</span>
+              {licence.enteredOn ? (
+                <>
+                  {" · entered "}
+                  <span className="data">{licence.enteredOn}</span>
+                </>
+              ) : null}
             </span>
             {!entryOpen ? (
               <TealAction onClick={() => setEntryOpen(true)}>
@@ -1482,8 +1498,8 @@ function LanguageRow() {
       label="Language"
       value={
         overridden ? (
-          <span className="font-mono text-xs text-faint">
-            forced by ?locale= for this session
+          <span className="text-xs text-faint">
+            forced by <span className="data">?locale=</span> for this session
           </span>
         ) : (
           <QuietSelect
@@ -1531,11 +1547,8 @@ function AboutBlock({ settings }: { settings: SettingsState }) {
         <AboutRow
           label="Your data"
           value={
-            <span
-              title={about.dataDir}
-              className="font-mono text-xs text-faint"
-            >
-              {middleTruncate(about.dataDir, 46)}
+            <span title={about.dataDir} className="text-xs text-faint">
+              <span className="data">{middleTruncate(about.dataDir, 46)}</span>
             </span>
           }
           action={
@@ -1547,23 +1560,22 @@ function AboutBlock({ settings }: { settings: SettingsState }) {
         <AboutRow
           label="Database"
           value={
-            <span className="font-mono text-xs tabular-nums text-faint">
-              {about.dbSizeOnDisk} on disk
+            <span className="text-xs text-faint">
+              <span className="data">{about.dbSizeOnDisk}</span> on disk
             </span>
           }
         />
         <AboutRow
           label="Version"
           value={
-            <span className="font-mono text-xs tabular-nums text-faint">
-              {about.version}
-              {update === "current" ? (
-                <span className="font-sans"> · up to date</span>
-              ) : null}
+            <span className="text-xs text-faint">
+              <span className="data">{about.version}</span>
+              {update === "current" ? <> · up to date</> : null}
               {typeof update === "object" ? (
-                <span className="font-sans text-red-700 dark:text-red-400">
+                <span className="text-red-700 dark:text-red-400">
                   {" "}
-                  · couldn’t check for updates · {update.failedAt}
+                  · couldn’t check for updates ·{" "}
+                  <span className="data">{update.failedAt}</span>
                 </span>
               ) : null}
             </span>
@@ -1604,9 +1616,7 @@ function AboutBlock({ settings }: { settings: SettingsState }) {
         <AboutRow
           label={t("Licence terms")}
           value={
-            <span className="font-mono text-xs text-faint">
-              source-available · FSL
-            </span>
+            <span className="text-xs text-faint">source-available · FSL</span>
           }
           action={
             <ExternalLink

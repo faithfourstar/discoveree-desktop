@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { ExternalLink } from "@/components/ExternalLink";
 import { useProductHref } from "@/lib/productUrl";
 import type { FeedbackItemRef } from "@/mock/types";
 
@@ -21,26 +22,35 @@ export function ProvenanceLine({
   const { provenance } = item;
 
   const label = provenance.sourceUrl ? (
-    <a
+    <ExternalLink
       href={provenance.sourceUrl}
-      target="_blank"
-      rel="noreferrer"
-      onClick={(event) => event.stopPropagation()}
       className="hover:text-teal-deep hover:underline"
     >
       {provenance.label}
-    </a>
+    </ExternalLink>
   ) : (
     <span>{provenance.label}</span>
   );
 
   return (
-    <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 font-mono text-[11px] tabular-nums text-faint">
+    // Typography ruling §3 (attribution lines): Inter 12.5px text-faint;
+    // the date values are the only `.data` tokens.
+    <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[12.5px] text-faint">
       <span>
         {label}
         {provenance.detail ? ` · ${provenance.detail}` : ""}
-        {` · ${provenance.date ?? "date unknown"}`}
-        {provenance.minedOn ? ` · mined ${provenance.minedOn}` : ""}
+        {" · "}
+        {provenance.date ? (
+          <span className="data">{provenance.date}</span>
+        ) : (
+          "date unknown"
+        )}
+        {provenance.minedOn ? (
+          <>
+            {" · mined "}
+            <span className="data">{provenance.minedOn}</span>
+          </>
+        ) : null}
       </span>
       {showThemeChip && item.themeId && item.themeName ? (
         <Link

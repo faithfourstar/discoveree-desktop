@@ -102,6 +102,31 @@ body {
 }
 
 /*
+ * Typography ruling (docs/design/typography-ruling.md), as amended by the
+ * owner's live judgment (4 Aug): mono survives ONLY in developer artifacts —
+ * code/config snippet blocks, the copyable prompt chips, and API key masks /
+ * key-address inputs. Everything else, including every former data token
+ * (dates, counts, domains, ports, versions, sizes, stamps), is Inter.
+ *
+ * `.data` — a value token inside a line: Inter, inheriting size/grey, with
+ * tabular figures so digit alignment survives without the mono face.
+ * `.mask` — the ONE mono composition utility left: key masks and their kin.
+ * The 0.95em compensates the mono face's larger set against Inter; tuned
+ * here once, never per component. `font-mono` may otherwise appear only in
+ * snippet blocks, prompt chips, and key/address input fields.
+ */
+@layer utilities {
+  .data {
+    @apply tabular-nums;
+  }
+  .mask {
+    @apply font-mono;
+    font-size: 0.95em;
+    font-weight: 400;
+  }
+}
+
+/*
  * A single 600 ms background tint fade (teal at 5%) when a refresh agent
  * finishes while the user is on the page — draws the eye once, no
  * persistent highlight (competitors spec 4.3).

@@ -72,7 +72,7 @@ function HeaderCell({
         active ? (ascending ? "ascending" : "descending") : undefined
       }
       className={[
-        "border-b border-edge-hairline pb-2 font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-label",
+        "border-b border-edge-hairline pb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-label",
         align === "right" ? "text-right" : "text-left",
       ].join(" ")}
     >
@@ -185,14 +185,18 @@ export function CompetitorsTable({
                   <ClassificationBadge value={row.classification} />
                 </span>
               </td>
-              <td className="py-3.5 pr-3 font-mono text-xs text-body">
+              <td className="py-3.5 pr-3 text-[12.5px] text-body">
                 {row.threat}
               </td>
-              <td className="py-3.5 pr-3 text-right font-mono text-xs tabular-nums text-body">
-                {row.sentiment !== undefined ? row.sentiment : null}
+              <td className="py-3.5 pr-3 text-right text-xs text-body">
+                {row.sentiment !== undefined ? (
+                  <span className="data">{row.sentiment}</span>
+                ) : null}
               </td>
-              <td className="py-3.5 pr-3 text-right font-mono text-xs tabular-nums text-body">
-                {row.reviewCount !== undefined ? row.reviewCount : null}
+              <td className="py-3.5 pr-3 text-right text-xs text-body">
+                {row.reviewCount !== undefined ? (
+                  <span className="data">{row.reviewCount}</span>
+                ) : null}
               </td>
               <td className="py-3.5 pr-3">
                 {row.lastRunFailed ? (
@@ -208,10 +212,15 @@ export function CompetitorsTable({
                           ? `${row.lastRunFailed.reason} · ${row.lastRunFailed.at}`
                           : row.lastRunFailed.reason
                       }
-                      className="min-w-0 truncate font-mono text-xs text-red-700 dark:text-red-400"
+                      className="min-w-0 truncate text-xs text-red-700 dark:text-red-400"
                     >
                       {row.lastRunFailed.reason}
-                      {row.lastRunFailed.at ? ` · ${row.lastRunFailed.at}` : ""}
+                      {row.lastRunFailed.at ? (
+                        <>
+                          {" · "}
+                          <span className="data">{row.lastRunFailed.at}</span>
+                        </>
+                      ) : null}
                     </span>
                     <button
                       type="button"

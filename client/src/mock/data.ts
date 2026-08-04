@@ -4,6 +4,7 @@ import {
   makeOverview,
   onboardingProposals,
 } from "./competitors";
+import { makeArrivals, makeConnections } from "./connections";
 import {
   makeCustomers,
   makeSegmentAdoption,
@@ -111,11 +112,14 @@ const briefingHome: HomeBriefing = {
   ],
   ideaPlaceholder: "Test a product idea, or ask about anything above…",
   serving: {
+    // Same figures as the Connections page — summary, not a second source
+    // of truth (connections-spec 6.2); every segment is a door.
     consumers: [
-      { tool: "Claude", queriesThisWeek: 118 },
-      { tool: "Cursor", queriesThisWeek: 22 },
+      { tool: "Claude", queriesThisWeek: 118, anchor: "claude" },
+      { tool: "Cursor", queriesThisWeek: 22, anchor: "cursor" },
     ],
     teammatesReading: 2,
+    writeAttemptFragment: "Maya's Claude tried to write",
   },
 };
 
@@ -172,6 +176,9 @@ function makePopulatedState(scenario: MockScenarioKey): AppState {
     competitorAddFlow: { ...initialAddFlow },
     onboardingProposals: null,
     ...makeCustomersFields(makeCustomers()),
+    connections: makeConnections("populated"),
+    arrivals: [],
+    claudeSetup: null,
     settings: makeSettings("healthy"),
     agentsPaused: false,
     justVerifiedId: null,
@@ -240,6 +247,9 @@ function makeDayOneState(scenario: MockScenarioKey): AppState {
     competitorAddFlow: { ...initialAddFlow },
     onboardingProposals: null,
     ...emptyCustomersFields(),
+    connections: makeConnections("day-one"),
+    arrivals: [],
+    claudeSetup: null,
     settings: makeSettings("day-one"),
     agentsPaused: false,
     justVerifiedId: null,
@@ -361,6 +371,71 @@ export function makeAppState(
       customers: { enabled: true, populated: false },
     };
     state.segmentAdoption = makeSegmentAdoption(analyticsProduct);
+  } else if (scenario === "connections-day-one") {
+    // Job 5 on, nothing configured — the activation page (spec 6.1).
+    state.connections = makeConnections("day-one");
+    state.modules = {
+      ...state.modules,
+      connections: { enabled: true, populated: false },
+    };
+    state.footer = { ...state.footer };
+    delete state.footer.mcp;
+    if (state.home) {
+      state.home = {
+        ...state.home,
+        serving: { consumers: [], teammatesReading: 0, invitation: true },
+      };
+    }
+  } else if (scenario === "connections-aged") {
+    // Aged waiting row + CLI off PATH (absolute-path snippets, spec 2.5).
+    state.connections = makeConnections("aged");
+    if (state.home) {
+      state.home = {
+        ...state.home,
+        serving: {
+          consumers: [],
+          teammatesReading: 0,
+          waitingToolName: "ChatGPT",
+        },
+      };
+    }
+  } else if (scenario === "connections-degraded") {
+    // Port in use (spec 7.2): the page carries the detail, the footer the tone.
+    state.connections = makeConnections("degraded");
+    state.footer = {
+      ...state.footer,
+      mcp: "MCP · not serving",
+      mcpFailed: true,
+    };
+  } else if (scenario === "connections-arrivals") {
+    // §4a intel waiting for review — surfaced in the owning module.
+    state.connections = makeConnections("arrivals");
+    state.arrivals = makeArrivals();
+    if (state.home) {
+      state.home = {
+        ...state.home,
+        items: [
+          {
+            id: "briefing:arrival-harvey",
+            body: [
+              {
+                text: "Intel about Harvey arrived via Claude — shared by Jonas in #sales-eu.",
+              },
+            ],
+            evidence: [
+              {
+                id: "ev:arrival-harvey-origin",
+                kind: "source",
+                label: "via Claude · #sales-eu",
+                objectId: "arrival:harvey",
+              },
+            ],
+            action: { label: "Review", objectId: "module:competitors" },
+          },
+          ...state.home.items,
+        ],
+      };
+    }
   } else if (scenario === "many") {
     state.competitorsOverview = makeOverview("many");
   } else if (scenario === "quiet") {

@@ -34,7 +34,7 @@ export function FilingResultLine({ result }: { result: FeedbackFilingResult }) {
         <span className="text-teal-deep">
           {" "}
           — its{" "}
-          <span className="font-mono text-[0.88em] tabular-nums">
+          <span className="data">
             {result.ordinal}
           </span>{" "}
           mention.
@@ -67,11 +67,11 @@ export function FilingResultLine({ result }: { result: FeedbackFilingResult }) {
   return (
     <p className="py-3 text-[15px] leading-[1.6] text-body">
       That’s new — nothing like it in your{" "}
-      <span className="font-mono text-[0.88em] tabular-nums">
+      <span className="data">
         {result.totalThemes}
       </span>{" "}
       themes. Holding it with{" "}
-      <span className="font-mono text-[0.88em] tabular-nums">
+      <span className="data">
         {result.unfiledCount - 1}
       </span>{" "}
       other unfiled item{result.unfiledCount === 2 ? "" : "s"}; a theme forms
@@ -111,7 +111,7 @@ export function LogFeedbackFlow({
       />
       <div className="mt-2.5 flex max-w-[560px] flex-wrap items-baseline gap-x-5 gap-y-2">
         <label className="flex items-baseline gap-2">
-          <span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-label">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-label">
             Who
           </span>
           <input
@@ -124,7 +124,7 @@ export function LogFeedbackFlow({
           />
         </label>
         <label className="flex items-baseline gap-2">
-          <span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-label">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-label">
             Where
           </span>
           <select
@@ -143,7 +143,7 @@ export function LogFeedbackFlow({
         </label>
         <label className="flex items-baseline gap-2">
           <span
-            className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-label"
+            className="text-[11px] font-semibold uppercase tracking-[0.08em] text-label"
             title="When was this said? Defaults to today."
           >
             When

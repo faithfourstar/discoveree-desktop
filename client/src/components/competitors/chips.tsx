@@ -11,7 +11,7 @@ export function ClassificationBadge({
   title?: string;
 }) {
   const className =
-    "rounded bg-teal-tint px-1.5 py-1 font-mono text-[10px] font-semibold text-teal-dark";
+    "rounded bg-teal-tint px-1.5 py-1 text-[10px] [font-weight:650] uppercase tracking-[0.06em] text-teal-dark";
   if (onClick) {
     return (
       <button
@@ -30,7 +30,7 @@ export function ClassificationBadge({
 /** The mono teal NEW marker on freshly detected, unseen changes. */
 export function NewTag() {
   return (
-    <span className="mr-1.5 inline-block translate-y-[-1px] rounded bg-teal-tint px-1.5 py-0.5 font-mono text-[10px] font-semibold text-teal-dark">
+    <span className="mr-1.5 inline-block translate-y-[-1px] rounded bg-teal-tint px-1.5 py-0.5 text-[10px] [font-weight:650] uppercase tracking-[0.06em] text-teal-dark">
       NEW
     </span>
   );

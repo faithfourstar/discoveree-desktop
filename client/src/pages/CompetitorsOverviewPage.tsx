@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { AddCompetitorFlow } from "@/components/competitors/AddCompetitorFlow";
+import { ArrivalsReviewBlock } from "@/components/connections/ArrivalCard";
 import { CompetitorRowCard } from "@/components/competitors/CompetitorRowCard";
 import { CompetitorsTable } from "@/components/competitors/CompetitorsTable";
 import { RichText } from "@/components/RichText";
@@ -26,7 +27,7 @@ function ViewToggle({
       onClick={() => onChange(value)}
       aria-pressed={view === value}
       className={[
-        "px-2 py-1 font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em]",
+        "px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.08em]",
         view === value ? "bg-chip text-ink" : "text-faint hover:text-muted",
       ].join(" ")}
     >
@@ -140,7 +141,7 @@ function PopulatedOverview({ overview }: { overview: CompetitorsOverview }) {
         {overview.searchKeyMissing ? <SearchKeyNotice /> : null}
 
         <div className="mb-4 flex items-baseline gap-4">
-          <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.09em] text-label">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-label">
             Competitors · since you last looked
           </span>
           <span className="ml-auto flex items-center gap-3.5">
@@ -162,6 +163,12 @@ function PopulatedOverview({ overview }: { overview: CompetitorsOverview }) {
           <CheckingClause overview={overview} />
           <RichText value={overview.lede} />
         </p>
+
+        <ArrivalsReviewBlock
+          arrivals={state.arrivals.filter(
+            (card) => card.kind === "competitor-intel",
+          )}
+        />
 
         {table ? (
           <CompetitorsTable
@@ -185,7 +192,7 @@ function PopulatedOverview({ overview }: { overview: CompetitorsOverview }) {
             ))}
             {alsoWatching.length > 0 ? (
               <>
-                <div className="mt-7 pb-2 font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-label">
+                <div className="mt-7 pb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-label">
                   Also watching
                 </div>
                 {alsoWatching.map((row) => (
@@ -245,7 +252,7 @@ function DayOneCompetitors() {
         <div className="w-full max-w-[600px]">
           <p className="mb-[26px] text-[23px] leading-[1.45] tracking-[-0.015em] text-ink [text-wrap:pretty]">
             Onboarding turned up{" "}
-            <span className="font-mono text-[0.88em] tabular-nums">
+            <span className="data">
               {proposals.length}
             </span>{" "}
             likely {proposals.length === 1 ? "competitor" : "competitors"}.
@@ -279,7 +286,7 @@ function DayOneCompetitors() {
             className="mb-8 rounded-[9px] bg-teal px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             Track{" "}
-            <span className="font-mono tabular-nums">{ticked.length}</span>{" "}
+            <span className="data">{ticked.length}</span>{" "}
             {ticked.length === 1 ? "competitor" : "competitors"}
           </button>
           <AddCompetitorFlow variant="day-one" />

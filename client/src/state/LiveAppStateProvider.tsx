@@ -25,6 +25,14 @@ import {
   type ServerProduct,
 } from "@/lib/api";
 import {
+  arrivalFromProposal,
+  connectionsApi,
+  connectionsFromServer,
+  type LocalToolSetup,
+  type ServerMcpActivity,
+  type ServerMcpConfig,
+} from "@/lib/connectionsApi";
+import {
   composeCustomers,
   customersApi,
   enrichNoticeFrom,
@@ -87,6 +95,8 @@ import { AppStateBridge, type AppActions } from "./appStateCore";
 const POLL_MS = 3000;
 const OFFLINE_RETRY_MS = 8000;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+/** Owner assertions ("I've pasted it in") — org-level, client-local. */
+const TOOL_SETUP_KEY = "discoveree.connections.toolSetup";
 
 /**
  * Static trial placeholder — there is no licensing server yet; the future
@@ -205,6 +215,12 @@ function makeLiveBaseState(): AppState {
     customersChecking: [],
     segmentProposals: null,
     segmentAdoption: null,
+    // Connections: the serving/tool surface waits on the ADR 005 server
+    // (GET /api/settings/mcp-config + mcp_activity); arrivals wire to the
+    // pinned intel-proposals REST below.
+    connections: null,
+    arrivals: [],
+    claudeSetup: null,
     settings: null,
     agentsPaused: false,
     justVerifiedId: null,
@@ -295,6 +311,11 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
   const customersRenamedRef = useRef<Map<string, string>>(new Map());
   const customersPollTimerRef = useRef<number | null>(null);
   const customersTickTimerRef = useRef<number | null>(null);
+
+  // Connections serving surface (org-level; survives product switches)
+  const mcpConfigRef = useRef<ServerMcpConfig | null>(null);
+  const mcpActivityRef = useRef<ServerMcpActivity | null>(null);
+  const connectionsTimerRef = useRef<number | null>(null);
   const pendingRunsRef = useRef<Map<string, PendingRun>>(new Map());
   const serverActiveRef = useRef<ServerActiveRun | null>(null);
   const proposalRunRef = useRef<ProposalRun | null>(null);
@@ -800,6 +821,8 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         // Customers loads in parallel with its own error handling — a
         // failure there leaves the module in its day-one state.
         void loadCustomers(active.id);
+        void loadArrivals(active.id);
+        void loadConnections();
         if (shouldPoll()) {
           ensurePolling();
         }
@@ -859,6 +882,7 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         segments: {},
         feedbackFlow: { open: false, draft: "" },
         customersChecking: [],
+        arrivals: [],
         justVerifiedId: null,
         modules: {
           ...prev.modules,
@@ -867,6 +891,105 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         },
       }));
       void loadAll();
+    };
+
+    // ── Connections — serving surface (mcp-config + mcp-activity) ─────────
+
+    const readToolSetup = (): LocalToolSetup => {
+      try {
+        const raw = window.localStorage.getItem(TOOL_SETUP_KEY);
+        const parsed: unknown = raw ? JSON.parse(raw) : null;
+        return parsed && typeof parsed === "object"
+          ? (parsed as LocalToolSetup)
+          : {};
+      } catch {
+        return {};
+      }
+    };
+
+    const recomposeConnections = (arrivalsCountOverride?: number) => {
+      const config = mcpConfigRef.current;
+      const activity = mcpActivityRef.current;
+      if (!config || !activity || !mountedRef.current) {
+        return;
+      }
+      const overview = connectionsFromServer(
+        config,
+        activity,
+        readToolSetup(),
+        arrivalsCountOverride ?? stateRef.current.arrivals.length,
+      );
+      const populated =
+        activity.totalCalls > 0 ||
+        overview.tools.some((tool) => tool.state.kind !== "unconfigured");
+      setState((prev) => ({
+        ...prev,
+        connections: overview,
+        modules: {
+          ...prev.modules,
+          connections: { ...prev.modules.connections, populated },
+        },
+        footer: { ...prev.footer, mcp: `MCP serving :${config.servingPort}` },
+      }));
+    };
+
+    const loadConnections = async () => {
+      try {
+        // Org-level, product-agnostic — loaded once per session, activity
+        // refreshed gently while the app is open.
+        const [config, activity] = await Promise.all([
+          connectionsApi.getMcpConfig(),
+          connectionsApi.getMcpActivity(),
+        ]);
+        mcpConfigRef.current = config;
+        mcpActivityRef.current = activity;
+        recomposeConnections();
+        if (connectionsTimerRef.current === null) {
+          connectionsTimerRef.current = window.setInterval(() => {
+            void (async () => {
+              try {
+                mcpActivityRef.current = await connectionsApi.getMcpActivity();
+                recomposeConnections();
+              } catch {
+                // Transient — the next cycle retries.
+              }
+            })();
+          }, 60_000);
+        }
+      } catch {
+        // The serving surface stays absent; the page says so honestly.
+      }
+    };
+
+    // ── Connections — intel-proposals review surface (ADR 005 §3.3) ───────
+
+    const loadArrivals = async (productId: string) => {
+      try {
+        const { proposals } = await connectionsApi.listIntelProposals(
+          productId,
+        );
+        if (activeProductIdRef.current !== productId) {
+          return;
+        }
+        const competitorsByEntityId = new Map(
+          cardsRef.current
+            .filter(
+              (card): card is typeof card & { entityId: string } =>
+                typeof card.entityId === "string",
+            )
+            .map((card) => [card.entityId, { id: card.id, name: card.name }]),
+        );
+        const arrivals = proposals
+          .filter((proposal) => proposal.status === "pending")
+          .map((proposal) =>
+            arrivalFromProposal(proposal, competitorsByEntityId),
+          );
+        setState((prev) => ({ ...prev, arrivals }));
+        // The lede's priority-1 count + the tool-row fragment follow.
+        recomposeConnections(arrivals.length);
+      } catch {
+        // 404 while the server side lands — arrivals simply absent.
+      }
     };
 
     // ── Customers (ADR 004 §6) ────────────────────────────────────────────
@@ -1744,6 +1867,36 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
       // No update-check endpoint on the live contract (flagged); the row
       // renders the version alone, so this never fires.
       checkForUpdates: () => undefined,
+      // Never-aspirational: "written" is claimed only when the server reports
+      // the config file actually written. Until the setup endpoint ships,
+      // the POST 404s and this honestly reports failure — the manual snippet
+      // remains the working path.
+      setUpClaudeAutomatically: () => {
+        setState((prev) => ({ ...prev, claudeSetup: { kind: "pending" } }));
+        void fetch("/api/settings/mcp-config/claude-desktop-setup", { method: "POST" })
+          .then(async (res) => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const body = (await res.json()) as { written?: boolean; configPath?: string };
+            if (body.written && body.configPath) {
+              setState((prev) => ({
+                ...prev,
+                claudeSetup: { kind: "written", configPath: body.configPath as string },
+              }));
+            } else {
+              throw new Error("The server did not confirm the write.");
+            }
+          })
+          .catch(() => {
+            setState((prev) => ({
+              ...prev,
+              claudeSetup: {
+                kind: "failed",
+                message:
+                  "We couldn't edit Claude's config from here — paste the snippet below into it instead.",
+              },
+            }));
+          });
+      },
     };
 
     // ── The actions surface ───────────────────────────────────────────────
@@ -2620,6 +2773,96 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
       addSegmentProposals: () => undefined,
       acceptSegmentAdoption: () => undefined,
       dismissSegmentAdoption: () => undefined,
+      // ── Connections (ADR 005 pinned REST; serving surface pending) ──────
+      acceptArrival: (id) => {
+        const productId = activeProductIdRef.current;
+        if (!productId) {
+          return;
+        }
+        void (async () => {
+          try {
+            await connectionsApi.acceptIntelProposal(productId, id);
+            const remaining = stateRef.current.arrivals.filter(
+              (card) => card.id !== id,
+            );
+            setState((prev) => ({
+              ...prev,
+              arrivals: prev.arrivals.filter((card) => card.id !== id),
+            }));
+            recomposeConnections(remaining.length);
+            // Accepted intel materialises as a change row — refetch the feed.
+            const changesRes = await api.listChanges(productId, 50);
+            feedRef.current = changesRes.changes;
+            recompose();
+          } catch {
+            // Reconciles on the next load.
+          }
+        })();
+      },
+      dismissArrival: (id) => {
+        const productId = activeProductIdRef.current;
+        if (!productId) {
+          return;
+        }
+        void (async () => {
+          try {
+            await connectionsApi.dismissIntelProposal(productId, id);
+            const remaining = stateRef.current.arrivals.filter(
+              (card) => card.id !== id,
+            );
+            setState((prev) => ({
+              ...prev,
+              arrivals: prev.arrivals.filter((card) => card.id !== id),
+            }));
+            recomposeConnections(remaining.length);
+          } catch {
+            // Reconciles on the next load.
+          }
+        })();
+      },
+      researchArrival: (id) => {
+        const arrival = stateRef.current.arrivals.find(
+          (card) => card.id === id,
+        );
+        if (!arrival?.targetName) {
+          return;
+        }
+        setState((prev) => ({
+          ...prev,
+          competitorAddFlow: {
+            ...prev.competitorAddFlow,
+            open: true,
+            mode: "name",
+            draft: arrival.targetName ?? "",
+            phase: "input",
+          },
+        }));
+      },
+      // Reader rows and write attempts arrive with reader keys (5b).
+      dismissWriteAttempt: () => undefined,
+      renameReader: () => undefined,
+      removeReader: () => undefined,
+      setUpTool: (id) => {
+        // The user's assertion (spec 2.4 ruling): recorded locally; a real
+        // first query promotes from any state via the activity payload.
+        try {
+          const setup = { ...readToolSetup(), [id]: new Date().toISOString() };
+          window.localStorage.setItem(TOOL_SETUP_KEY, JSON.stringify(setup));
+        } catch {
+          // Storage unavailable — the row simply stays unconfigured.
+        }
+        recomposeConnections();
+      },
+      forgetTool: (id) => {
+        try {
+          const setup = { ...readToolSetup() };
+          delete setup[id];
+          window.localStorage.setItem(TOOL_SETUP_KEY, JSON.stringify(setup));
+        } catch {
+          // Storage unavailable.
+        }
+        recomposeConnections();
+      },
       createProduct: ({ url }) => {
         const domain = normaliseDomain(url);
         if (!domain) {
@@ -2721,6 +2964,9 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
       }
       if (customersTickTimerRef.current !== null) {
         window.clearInterval(customersTickTimerRef.current);
+      }
+      if (connectionsTimerRef.current !== null) {
+        window.clearInterval(connectionsTimerRef.current);
       }
       for (const timer of settingsTimersRef.current) {
         window.clearTimeout(timer);

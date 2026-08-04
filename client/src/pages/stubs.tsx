@@ -17,12 +17,6 @@ export function RoadmapPage() {
   );
 }
 
-export function ConnectionsPage() {
-  return (
-    <EmptyState line="Your AI tools and data tools connect here — most take under a minute." />
-  );
-}
-
 export function SourcesPage() {
   return (
     <EmptyState line="Everything agents believe, and why — sources land here as agents cite them." />

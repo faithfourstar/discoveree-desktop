@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { VerifiedStamp } from "@/components/competitors/VerifiedStamp";
 import { useProductHref } from "@/lib/productUrl";
@@ -18,7 +18,7 @@ export function SegmentTypeBadge({
     return null;
   }
   return (
-    <span className="rounded bg-teal-tint px-1.5 py-1 font-mono text-[10px] font-semibold uppercase text-teal-dark">
+    <span className="rounded bg-teal-tint px-1.5 py-1 text-[10px] [font-weight:650] uppercase tracking-[0.06em] text-teal-dark">
       {type}
     </span>
   );
@@ -45,22 +45,35 @@ export function SegmentRowCard({
   const [pausedNote, setPausedNote] = useState(false);
   const path = productHref(segmentPath(row.id));
 
-  const metaSegments: string[] = [];
+  // Typography ruling §3: judgment words ("strong fit") stay Inter; the
+  // figures are `.data` tokens inside one Inter 12.5px line.
+  const sep = <span className="text-sep"> · </span>;
+  const metaSegments: ReactNode[] = [];
   if (row.fit) {
     metaSegments.push(row.fit);
   }
   if (row.personaCount !== undefined) {
     metaSegments.push(
-      `${row.personaCount} persona${row.personaCount === 1 ? "" : "s"}`,
+      <>
+        <span className="data">{row.personaCount}</span>{" "}
+        {row.personaCount === 1 ? "persona" : "personas"}
+      </>,
     );
   }
   if (row.feedbackCount !== undefined) {
     metaSegments.push(
-      `${row.feedbackCount} feedback item${row.feedbackCount === 1 ? "" : "s"}`,
+      <>
+        <span className="data">{row.feedbackCount}</span> feedback{" "}
+        {row.feedbackCount === 1 ? "item" : "items"}
+      </>,
     );
   }
   if (row.sentiment !== undefined) {
-    metaSegments.push(`sentiment ${row.sentiment}`);
+    metaSegments.push(
+      <>
+        sentiment <span className="data">{row.sentiment}</span>
+      </>,
+    );
   }
 
   const handleCheckNow = () => {
@@ -105,11 +118,16 @@ export function SegmentRowCard({
           />
         </span>
       </div>
-      <div className="mt-1 font-mono text-xs tabular-nums text-faint">
-        {metaSegments.join(" · ")}
+      <div className="mt-1 text-[12.5px] text-faint">
+        {metaSegments.map((segment, index) => (
+          <span key={index}>
+            {index > 0 ? sep : null}
+            {segment}
+          </span>
+        ))}
         {row.alsoServedBy && row.alsoServedBy.length > 0 ? (
           <>
-            {metaSegments.length > 0 ? " · " : ""}
+            {metaSegments.length > 0 ? sep : null}
             also served by{" "}
             {row.alsoServedBy.map((product, index) => (
               <span key={product.id}>
@@ -125,7 +143,7 @@ export function SegmentRowCard({
         <div className="mt-2.5">
           <p className="text-[15px] leading-[1.6] text-amber-600 dark:text-amber-400">
             Not verified in{" "}
-            <span className="font-mono text-[0.88em] tabular-nums">
+            <span className="data">
               {row.staleDays ?? 31}
             </span>{" "}
             days — feedback since then may have moved who they are.{" "}

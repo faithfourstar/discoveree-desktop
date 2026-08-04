@@ -21,7 +21,7 @@ import type { CustomersOverview, SegmentAdoptionProposal } from "@/mock/types";
 
 function BandKicker({ children }: { children: string }) {
   return (
-    <div className="mb-1 mt-8 font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-label">
+    <div className="mb-1 mt-8 text-[11px] font-semibold uppercase tracking-[0.08em] text-label">
       {children}
     </div>
   );
@@ -29,7 +29,7 @@ function BandKicker({ children }: { children: string }) {
 
 function QuietGroupLabel({ children }: { children: string }) {
   return (
-    <div className="mt-6 pb-1 font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ghost">
+    <div className="mt-6 pb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-ghost">
       {children}
     </div>
   );
@@ -64,7 +64,7 @@ function AdoptionCard({ adoption }: { adoption: SegmentAdoptionProposal }) {
       </div>
       <p className="mb-4 text-[12.5px] text-faint">
         Served by {adoption.servedBy.name} since{" "}
-        <span className="font-mono tabular-nums">{adoption.servedBy.since}</span>
+        <span className="data">{adoption.servedBy.since}</span>
         . Reviewing for {productName}.
       </p>
       <p className="mb-4 text-[15px] leading-[1.65] text-ink [text-wrap:pretty]">
@@ -164,7 +164,7 @@ function PopulatedOverview({ overview }: { overview: CustomersOverview }) {
         {overview.searchKeyMissing ? <SearchKeyNotice /> : null}
 
         <div className="mb-4 flex items-baseline gap-4">
-          <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.09em] text-label">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-label">
             Customers · since you last looked
           </span>
           <button
@@ -180,7 +180,7 @@ function PopulatedOverview({ overview }: { overview: CustomersOverview }) {
           {overview.reading ? (
             <span className="text-teal-deep">
               Reading{" "}
-              <span className="font-mono text-[0.88em] tabular-nums">
+              <span className="data">
                 {overview.reading.itemCount}
               </span>{" "}
               new feedback items now —{" "}
@@ -238,10 +238,11 @@ function PopulatedOverview({ overview }: { overview: CustomersOverview }) {
           {overview.unfiledCount ? (
             <button
               type="button"
-              className="py-3 text-left font-mono text-xs tabular-nums text-faint hover:text-muted"
+              className="py-3 text-left text-[12.5px] text-faint hover:text-muted"
             >
-              {overview.unfiledCount} item
-              {overview.unfiledCount === 1 ? "" : "s"} waiting for a pattern
+              <span className="data">{overview.unfiledCount}</span>{" "}
+              {overview.unfiledCount === 1 ? "item" : "items"} waiting for a
+              pattern
             </button>
           ) : null}
         </div>
@@ -335,7 +336,7 @@ function DayOneCustomers() {
         <div className="w-full max-w-[600px]">
           <p className="mb-[26px] text-[23px] leading-[1.45] tracking-[-0.015em] text-ink [text-wrap:pretty]">
             Onboarding turned up{" "}
-            <span className="font-mono text-[0.88em] tabular-nums">
+            <span className="data">
               {proposals.length}
             </span>{" "}
             likely customer segments. Keep the ones that ring true.
@@ -366,7 +367,7 @@ function DayOneCustomers() {
             className="mb-8 rounded-[9px] bg-teal px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             Add{" "}
-            <span className="font-mono tabular-nums">{ticked.length}</span>{" "}
+            <span className="data">{ticked.length}</span>{" "}
             segments
           </button>
           <LogFeedbackFlow variant="day-one" />

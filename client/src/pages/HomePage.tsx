@@ -1,5 +1,7 @@
+import { Link } from "wouter";
 import { EvidenceRow } from "@/components/EvidenceChip";
 import { RichText } from "@/components/RichText";
+import { useProductHref } from "@/lib/productUrl";
 import { useAppState } from "@/state/AppStateContext";
 import { useT } from "@/state/locale";
 import type { BriefingItem, DayOnePrompt, HomeBriefing } from "@/mock/types";
@@ -7,7 +9,7 @@ import type { BriefingItem, DayOnePrompt, HomeBriefing } from "@/mock/types";
 function BriefingRow({ item, index }: { item: BriefingItem; index: number }) {
   return (
     <div className="flex gap-3.5 border-t border-edge-hairline py-5 last:border-b">
-      <span className="w-[18px] flex-none font-mono text-xs font-medium leading-[1.6] text-num">
+      <span className="data w-[18px] flex-none text-xs font-medium leading-[1.6] text-num">
         {String(index + 1).padStart(2, "0")}
       </span>
       <div className="flex-1">
@@ -28,10 +30,11 @@ function BriefingRow({ item, index }: { item: BriefingItem; index: number }) {
 }
 
 function Briefing({ home }: { home: HomeBriefing }) {
+  const productHref = useProductHref();
   return (
     <div className="flex justify-center px-8 py-[42px]">
       <div className="w-full max-w-[720px]">
-        <div className="mb-4 font-mono text-[11px] font-semibold uppercase tracking-[0.09em] text-label">
+        <div className="mb-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-label">
           {home.kicker}
         </div>
         <p className="mb-[34px] text-[21px] leading-[1.5] tracking-[-0.01em] text-ink [text-wrap:pretty]">
@@ -51,36 +54,81 @@ function Briefing({ home }: { home: HomeBriefing }) {
           aria-label="Test a product idea"
         />
 
-        <div className="flex items-center gap-3 pt-0.5">
-          <span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ghost">
+        {/* Summary of the Connections page — every segment is a door
+            (connections-spec 6.2); the figures share one source of truth. */}
+        <div className="flex flex-wrap items-center gap-3 pt-0.5">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ghost">
             Serving
           </span>
-          <span className="text-[12.5px] text-body">
-            {home.serving.consumers.map((consumer, index) => (
-              <span key={consumer.tool}>
-                {index > 0 ? " · " : ""}
-                {consumer.tool}{" "}
-                <span className="font-mono tabular-nums">
-                  {consumer.queriesThisWeek}
-                </span>
+          {home.serving.invitation ? (
+            <span className="text-[12.5px] text-body">
+              nothing is reading your context yet —{" "}
+              <Link
+                href={`${productHref("/connections")}#serving`}
+                className="font-medium text-teal-deep hover:underline"
+              >
+                Connect a tool
+              </Link>
+            </span>
+          ) : home.serving.waitingToolName ? (
+            <Link
+              href={`${productHref("/connections")}#serving`}
+              className="text-[12.5px] text-body hover:text-ink"
+            >
+              {home.serving.waitingToolName} set up, waiting for its first
+              query
+            </Link>
+          ) : (
+            <>
+              <span className="text-[12.5px] text-body">
+                {home.serving.consumers.map((consumer, index) => (
+                  <span key={consumer.tool}>
+                    {index > 0 ? " · " : ""}
+                    <Link
+                      href={`${productHref("/connections")}#${consumer.anchor ?? "serving"}`}
+                      className="hover:text-ink hover:underline"
+                    >
+                      {consumer.tool}{" "}
+                      <span className="data">
+                        {consumer.queriesThisWeek}
+                      </span>
+                    </Link>
+                  </span>
+                ))}{" "}
+                this week
               </span>
-            ))}{" "}
-            this week
-          </span>
-          <span className="text-sep">·</span>
-          <span className="text-[12.5px] text-body">
-            <span className="font-mono tabular-nums">
-              {home.serving.teammatesReading}
-            </span>{" "}
-            {home.serving.teammatesReading === 1 ? "teammate" : "teammates"}{" "}
-            reading
-          </span>
-          <button
-            type="button"
-            className="text-[12.5px] font-medium text-teal-deep hover:underline"
-          >
-            Connect another
-          </button>
+              <span className="text-sep">·</span>
+              <Link
+                href={`${productHref("/connections")}#readers`}
+                className="text-[12.5px] text-body hover:text-ink hover:underline"
+              >
+                <span className="data">
+                  {home.serving.teammatesReading}
+                </span>{" "}
+                {home.serving.teammatesReading === 1
+                  ? "teammate"
+                  : "teammates"}{" "}
+                reading
+              </Link>
+              <Link
+                href={`${productHref("/connections")}#serving`}
+                className="text-[12.5px] font-medium text-teal-deep hover:underline"
+              >
+                Connect another
+              </Link>
+            </>
+          )}
+          {home.serving.writeAttemptFragment ? (
+            <>
+              <span className="text-sep">·</span>
+              <Link
+                href={`${productHref("/connections")}#readers`}
+                className="text-[12.5px] text-faint hover:text-body hover:underline"
+              >
+                {home.serving.writeAttemptFragment} — full seats
+              </Link>
+            </>
+          ) : null}
         </div>
       </div>
     </div>
