@@ -223,6 +223,40 @@ function ConsumptionMeta({ stats }: { stats: ConsumptionStats }) {
   );
 }
 
+/**
+ * "Set up automatically" with its three honest outcomes (spec §2.4).
+ * Never-aspirational: success renders only from the server-confirmed write
+ * (the mock simulates the same contract); failure keeps the manual snippet
+ * below as the working path.
+ */
+function ClaudeAutoSetup() {
+  const t = useT();
+  const actions = useAppActions();
+  const { claudeSetup } = useAppState();
+
+  // A confirmed write flips the row to waiting, which unmounts this panel —
+  // the confirmation line renders on the row itself (ToolRowView).
+  return (
+    <div className="flex flex-col gap-2">
+      <div>
+        <button
+          type="button"
+          disabled={claudeSetup?.kind === "pending"}
+          onClick={() => actions.setUpClaudeAutomatically()}
+          className="rounded-[7px] bg-teal px-[13px] py-2 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+        >
+          {claudeSetup?.kind === "pending" ? t("Setting up…") : claudeSetup?.kind === "failed" ? t("Try again") : t("Set up automatically")}
+        </button>
+      </div>
+      {claudeSetup?.kind === "failed" ? (
+        <p className="text-[12.5px] leading-[1.6] text-red-700 dark:text-red-400">
+          {t(claudeSetup.message)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function SetupPanel({
   tool,
   onDone,
@@ -237,20 +271,7 @@ function SetupPanel({
       <p className="text-[13.5px] leading-[1.65] text-body">
         {t(tool.description)}
       </p>
-      {tool.id === "claude" ? (
-        <div>
-          <button
-            type="button"
-            onClick={() => {
-              actions.setUpTool(tool.id);
-              onDone();
-            }}
-            className="rounded-[7px] bg-teal px-[13px] py-2 text-[12.5px] font-semibold text-white transition-opacity hover:opacity-90"
-          >
-            {t("Set up automatically")}
-          </button>
-        </div>
-      ) : null}
+      {tool.id === "claude" ? <ClaudeAutoSetup /> : null}
       {tool.snippets.map((snippet) => (
         <CopyMono
           key={snippet.body}
@@ -317,6 +338,7 @@ function SetupPanel({
 function ToolRowView({ tool }: { tool: McpToolRow }) {
   const t = useT();
   const actions = useAppActions();
+  const { claudeSetup } = useAppState();
   const productHref = useProductHref();
   const [open, setOpen] = useState(false);
   const [confirmForget, setConfirmForget] = useState(false);
@@ -386,6 +408,17 @@ function ToolRowView({ tool }: { tool: McpToolRow }) {
                 : t("waiting for its first query")}
             </span>
           </div>
+          {tool.id === "claude" && claudeSetup?.kind === "written" ? (
+            <p
+              className="mt-1.5 text-[13px] leading-[1.65] text-body"
+              data-testid="claude-setup-written"
+            >
+              {t(claudeSetup.replacedExisting ? "Updated in" : "Written to")}{" "}
+              <span className="data break-all">{claudeSetup.configPath}</span>
+              {" — "}
+              {t("restart Claude Desktop, then ask it something.")}
+            </p>
+          ) : null}
           {state.agedDays !== undefined ? (
             <>
               <p className="mt-1.5 text-[15px] leading-[1.6] text-body">

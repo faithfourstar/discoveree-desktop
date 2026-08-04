@@ -50,6 +50,7 @@ export function sanitiseWhere(value: unknown): string | null {
 
 registerToolDef({
   name: "log_feedback",
+  title: "Log feedback",
   description: "Log a piece of customer feedback into Discoveree, verbatim, with provenance. shared_by is REQUIRED and must be the attribution as stated by the user — pass the literal \"unattributed\" when they do not say; never invent attribution. Omit sentiment unless the user stated it — Discoveree scores it.",
   category: "write",
   inputSchema: {
@@ -148,6 +149,7 @@ registerToolDef({
 
 registerToolDef({
   name: "propose_competitor_intel",
+  title: "Propose competitor intel",
   description: "Propose competitor intelligence (pricing moves, features, news, positioning, customer wins) into Discoveree's review queue. Nothing changes until a human accepts it. shared_by is REQUIRED — the attribution as stated by the user, or the literal \"unattributed\".",
   category: "write",
   inputSchema: {

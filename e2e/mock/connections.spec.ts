@@ -137,3 +137,22 @@ test("the home Serving line is a door into Connections", async ({ page }) => {
     page.getByText("Maya's Claude tried to write — full seats"),
   ).toBeVisible();
 });
+
+test("set up automatically claims success only from a confirmed write, and fails honestly when aged", async ({ page }) => {
+  // Success path: pending → the confirmation names the path.
+  await page.goto("/p/analytics/connections?state=connections-day-one");
+  await page.getByRole("button", { name: "Set up" }).first().click();
+  await page.getByRole("button", { name: "Set up automatically" }).click();
+  await expect(page.getByTestId("claude-setup-written")).toBeVisible();
+  await expect(page.getByTestId("claude-setup-written")).toContainText("Written to");
+  await expect(page.getByTestId("claude-setup-written")).toContainText("claude_desktop_config.json");
+  await expect(page.getByTestId("claude-setup-written")).toContainText("restart Claude Desktop");
+
+  // Failure path (aged scenario): honest message, manual snippet still the working path.
+  await page.goto("/p/analytics/connections?state=connections-aged");
+  await page.getByRole("button", { name: "Set up" }).first().click();
+  await page.getByRole("button", { name: "Set up automatically" }).click();
+  await expect(page.getByText("We couldn't edit Claude's config", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  await expect(page.getByText("claude_desktop_config.json").first()).toBeVisible();
+});

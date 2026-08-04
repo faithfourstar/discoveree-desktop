@@ -42,6 +42,7 @@ async function resolveProduct(ctx: McpToolCtx, args: Record<string, unknown>): P
 
 registerToolDef({
   name: "list_products",
+  title: "List products",
   description: "List the products in this Discoveree workspace (id, slug, name, description, url). Org-level — takes no product parameter.",
   category: "read",
   inputSchema: {},
@@ -55,6 +56,7 @@ registerToolDef({
 
 registerToolDef({
   name: "get_context_health",
+  title: "Get context health",
   description: "The Context Health summary for a product: per-module counts, freshness stamps, staleness flags, pending intel proposals and the unfiled feedback count. Computed, never generated — call this first in a fresh conversation.",
   category: "read",
   inputSchema: { ...productParam },
@@ -108,6 +110,7 @@ registerToolDef({
 
 registerToolDef({
   name: "get_product_profile",
+  title: "Get product profile",
   description: "The product's own profile context: name, description, url, markets, audience, business model — with its updatedAt freshness stamp.",
   category: "read",
   inputSchema: { ...productParam },
@@ -130,6 +133,7 @@ registerToolDef({
 
 registerToolDef({
   name: "list_competitors",
+  title: "List competitors",
   description: "The product's competitor cards: stable facet ids, entity lineage, threat level, classification, review sentiment, freshness stamps and which sibling products also track each entity.",
   category: "read",
   inputSchema: {
@@ -153,6 +157,7 @@ registerToolDef({
 
 registerToolDef({
   name: "get_competitor",
+  title: "Get competitor",
   description: "One competitor in full: entity facts with per-feature source URLs, pricing with its source, the facet's differentiators, the 'what buyers say' reviews block (quotes with URLs and verified flags) and monitoring stamps. Accepts the facet id or the competitor's name.",
   category: "read",
   inputSchema: {
@@ -206,6 +211,7 @@ registerToolDef({
 
 registerToolDef({
   name: "list_competitor_changes",
+  title: "List competitor changes",
   description: "The product's competitor change feed (entity-joined, tracked competitors only): releases, pricing moves, announcements — each with source URL, verification flag and detection stamp.",
   category: "read",
   inputSchema: {
@@ -248,6 +254,7 @@ registerToolDef({
 
 registerToolDef({
   name: "list_segments",
+  title: "List segments",
   description: "The product's customer segment cards, each with its honest evidenceStatus (evidence counts, distinct sources, thresholds, what the evidence currently supports). Absence of evidence is stated, never papered over.",
   category: "read",
   inputSchema: {
@@ -271,6 +278,7 @@ registerToolDef({
 
 registerToolDef({
   name: "get_segment",
+  title: "Get segment",
   description: "One segment in full: needs and jobs-to-be-done with their evidence references, personas (owner or agent provenance) with goals and pain points, quotes with URLs, and the computed satisfaction. Accepts the segment's facet id or its name.",
   category: "read",
   inputSchema: {
@@ -309,6 +317,7 @@ registerToolDef({
 
 registerToolDef({
   name: "list_feedback_themes",
+  title: "List feedback themes",
   description: "The product's stable feedback theme catalogue with evidence counts, distinct sources, confidence/coherence, aliases from human merges, and the honest count of unfiled feedback entries.",
   category: "read",
   inputSchema: { ...productParam },
@@ -329,6 +338,7 @@ registerToolDef({
 
 registerToolDef({
   name: "list_feedback",
+  title: "List feedback",
   description: "Raw feedback entries: verbatim quotes with source names/URLs, verification flags, sentiment, when they were authored (sourceCreatedAt — null means the source showed no date) and when they were collected. Filterable by theme, topic, or competitor flag.",
   category: "read",
   inputSchema: {

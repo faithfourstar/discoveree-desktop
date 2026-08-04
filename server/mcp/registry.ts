@@ -20,6 +20,8 @@ export interface McpToolCtx {
 
 export interface ToolDef {
   name: string;
+  /** Human-friendly title for client permission prompts (MCP annotations). */
+  title: string;
   description: string;
   category: "read" | "write";
   /** Zod raw shape — the SDK derives the JSON schema from it. */

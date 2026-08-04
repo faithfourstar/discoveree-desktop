@@ -50,7 +50,18 @@ export function buildMcpServer(options: BuildMcpServerOptions): McpServer {
   for (const def of listToolDefs()) {
     server.registerTool(
       def.name,
-      { description: def.description, inputSchema: def.inputSchema },
+      {
+        title: def.title,
+        description: def.description,
+        inputSchema: def.inputSchema,
+        // readOnlyHint lets clients render gentler permission prompts for the
+        // ten read tools; write tools are non-destructive additions/proposals.
+        annotations: {
+          title: def.title,
+          readOnlyHint: def.category === "read",
+          destructiveHint: false,
+        },
+      },
       (async (args: Record<string, unknown>) => {
         // clientInfo arrives with the initialize handshake; on stateless HTTP
         // tool calls it is absent (null) — recorded honestly either way.

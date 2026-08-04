@@ -177,5 +177,15 @@ export function registerSettingsRoutes(app: Express): void {
     res.json(await getMcpActivitySummary(7));
   }));
 
+  // "Set up automatically" (connections-spec §2.4) — writes the spawn-proof
+  // discoveree entry into Claude Desktop's config. Never-aspirational: 200
+  // with written:true only after the file is on disk; merge failures return
+  // 422 with the structured reason and nothing changed.
+  router.post("/settings/mcp-config/claude-desktop-setup", asyncHandler(async (_req, res) => {
+    const { setupClaudeDesktopConfig } = await import("../../mcp/claudeDesktopSetup.js");
+    const result = await setupClaudeDesktopConfig();
+    res.status(result.written ? 200 : 422).json(result);
+  }));
+
   app.use("/api", router);
 }

@@ -427,7 +427,12 @@ export interface CheckingRow {
  */
 export type ClaudeSetupResult =
   | { kind: "pending" }
-  | { kind: "written"; configPath: string }
+  | {
+      kind: "written";
+      configPath: string;
+      /** True ⇒ an existing entry was replaced: "Updated in …". */
+      replacedExisting?: boolean;
+    }
   | { kind: "failed"; message: string };
 
 export interface ConnectionsOverview {

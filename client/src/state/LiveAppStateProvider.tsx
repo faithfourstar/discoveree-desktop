@@ -1875,24 +1875,42 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         setState((prev) => ({ ...prev, claudeSetup: { kind: "pending" } }));
         void fetch("/api/settings/mcp-config/claude-desktop-setup", { method: "POST" })
           .then(async (res) => {
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const body = (await res.json()) as { written?: boolean; configPath?: string };
-            if (body.written && body.configPath) {
+            const body = (await res.json()) as {
+              written?: boolean;
+              configPath?: string;
+              replacedExisting?: boolean;
+              message?: string;
+            };
+            if (res.ok && body.written && body.configPath) {
               setState((prev) => ({
                 ...prev,
-                claudeSetup: { kind: "written", configPath: body.configPath as string },
+                claudeSetup: {
+                  kind: "written",
+                  configPath: body.configPath as string,
+                  replacedExisting: !!body.replacedExisting,
+                },
               }));
+              // The write is real, so the row's waiting state is too.
+              try {
+                const setup = { ...readToolSetup(), claude: new Date().toISOString() };
+                window.localStorage.setItem(TOOL_SETUP_KEY, JSON.stringify(setup));
+              } catch {
+                // Storage unavailable — the confirmation line still renders.
+              }
+              recomposeConnections();
             } else {
-              throw new Error("The server did not confirm the write.");
+              throw new Error(body.message ?? `HTTP ${res.status}`);
             }
           })
-          .catch(() => {
+          .catch((err: unknown) => {
             setState((prev) => ({
               ...prev,
               claudeSetup: {
                 kind: "failed",
                 message:
-                  "We couldn't edit Claude's config from here — paste the snippet below into it instead.",
+                  err instanceof Error && err.message && !err.message.startsWith("HTTP")
+                    ? err.message
+                    : "We couldn't edit Claude's config from here — paste the snippet below into it instead.",
               },
             }));
           });
