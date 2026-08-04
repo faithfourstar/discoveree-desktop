@@ -5,9 +5,14 @@
  * runs while the app is open; the catch-up pass (catchUp.ts) handles
  * everything missed while it was closed.
  */
-import type { AgentSchedule, Product } from "@shared/schema";
+import type { AgentSchedule, OrgSchedulingSettings, Product } from "@shared/schema";
 import { getAllProducts } from "../modules/products/storage.js";
 import { trackAgentExecution } from "../lib/agents/executions.js";
+import {
+  applyFrequencyOverride,
+  DEFAULT_SCHEDULING_SETTINGS,
+  getOrgSchedulingSettings,
+} from "../lib/settings/agentScheduling.js";
 import { shouldRunAgentNow, shouldRunEntityAgentNow } from "./gates.js";
 import { getEntityScheduledAgents, getScheduledAgents, withInFlightGuard, type ScheduledAgent } from "./registry.js";
 
@@ -27,6 +32,27 @@ function resolveTimezone(product: Product): string {
   return typeof tz === "string" && tz ? tz : "Europe/London";
 }
 
+/**
+ * Per-pass cache of org scheduling settings (Settings §3.4): one DB read per
+ * org per pass, failing OPEN to defaults (a settings read error must never
+ * stop the scheduler — the gates share that philosophy).
+ */
+export function makeOrgSchedulingSettingsCache(): (organizationId: string) => Promise<OrgSchedulingSettings> {
+  const cache = new Map<string, OrgSchedulingSettings>();
+  return async (organizationId: string) => {
+    const cached = cache.get(organizationId);
+    if (cached) return cached;
+    let settings = DEFAULT_SCHEDULING_SETTINGS;
+    try {
+      settings = await getOrgSchedulingSettings(organizationId);
+    } catch (err) {
+      console.error("[Scheduler] Could not read org scheduling settings — running with defaults:", err instanceof Error ? err.message : err);
+    }
+    cache.set(organizationId, settings);
+    return settings;
+  };
+}
+
 /** One tick: run every eligible agent for every product. Exported for tests. */
 export async function runSchedulerTick(): Promise<void> {
   if (tickRunning) return;
@@ -34,10 +60,18 @@ export async function runSchedulerTick(): Promise<void> {
   try {
     const products = await getAllProducts();
     const agents = getScheduledAgents();
+    const orgSettings = makeOrgSchedulingSettingsCache();
     for (const product of products) {
+      const settings = await orgSettings(product.organizationId);
+      // Pause-all (Settings §3.4): the user's choice suppresses the whole
+      // tick for the org; stamps age truthfully and staleness shows amber.
+      if (settings.pausedAll) continue;
       const timezone = resolveTimezone(product);
       for (const agent of agents) {
-        const schedule = resolveSchedule(agent, product);
+        const schedule = applyFrequencyOverride(
+          resolveSchedule(agent, product),
+          settings.frequencies[agent.slug],
+        );
         try {
           if (!await shouldRunAgentNow(agent.slug, product.id, schedule, product.name, timezone)) {
             continue;
@@ -67,7 +101,10 @@ export async function runSchedulerTick(): Promise<void> {
       }
       for (const target of targets) {
         try {
-          if (!await shouldRunEntityAgentNow(agent.slug, target.entityId, target.schedule, target.entityName, target.timezone)) {
+          const settings = await orgSettings(target.organizationId);
+          if (settings.pausedAll) continue;
+          const schedule = applyFrequencyOverride(target.schedule, settings.frequencies[agent.slug]);
+          if (!await shouldRunEntityAgentNow(agent.slug, target.entityId, schedule, target.entityName, target.timezone)) {
             continue;
           }
           await withInFlightGuard(agent.slug, target.entityId, () =>

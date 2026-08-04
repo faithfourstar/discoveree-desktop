@@ -63,6 +63,12 @@ export const organizations = pgTable("organizations", {
   claudeApiKey: text("claude_api_key"),
   openrouterApiKey: text("openrouter_api_key"),
   llmKeyMode: text("llm_key_mode").notNull().default("individual"), // 'individual' | 'openrouter'
+  // Org-level app settings (organizationSettingsSchema). Sprint 3a: the
+  // scheduling block (pause-all + per-agent frequency overrides, keyed by
+  // agent slug). Chosen over fanning writes into every product's
+  // agentSchedules jsonb: the Settings contract is org-level, pause-all is
+  // org-global, and new products inherit org settings automatically.
+  settings: jsonb("settings"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1418,6 +1424,33 @@ export const agentSchedulesSchema = z.object({
 
 export type AgentSchedule = z.infer<typeof agentScheduleSchema>;
 export type AgentSchedules = z.infer<typeof agentSchedulesSchema>;
+
+// Org-level settings (organizations.settings jsonb). The Settings API
+// contract's frequency vocabulary — coarser than AgentSchedule, mapped onto
+// it by lib/settings/agentScheduling.ts.
+export const scheduleFrequencySchema = z.enum([
+  "daily",
+  "every-3-days",
+  "weekly",
+  "fortnightly",
+  "monthly",
+  "off",
+]);
+
+export const organizationSettingsSchema = z.object({
+  scheduling: z
+    .object({
+      /** True suppresses the scheduler tick AND the launch catch-up pass. */
+      pausedAll: z.boolean().default(false),
+      /** Per-agent frequency overrides, keyed by agent slug (AgentSlugs value). */
+      frequencies: z.record(z.string(), scheduleFrequencySchema).default({}),
+    })
+    .default({ pausedAll: false, frequencies: {} }),
+});
+
+export type ScheduleFrequency = z.infer<typeof scheduleFrequencySchema>;
+export type OrganizationSettings = z.infer<typeof organizationSettingsSchema>;
+export type OrgSchedulingSettings = OrganizationSettings["scheduling"];
 
 // LLM API Keys update schema (for API input - accepts plain text keys)
 export const llmApiKeysUpdateSchema = z.object({

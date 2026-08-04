@@ -36,6 +36,24 @@ export async function getAiAgentExecutionsByProduct(
   return rows as Array<AiAgentExecution & { agentSlug: string | null }>;
 }
 
+/**
+ * Most recent execution for an agent across EVERY scope (product or entity).
+ * The Settings agent-schedules view shows one row per agent, not per scope,
+ * so its "last ran" stamp is the newest run anywhere.
+ */
+export async function getLastExecutionForAgent(
+  agentId: string,
+): Promise<AiAgentExecution | null> {
+  const db = getDb();
+  const [execution] = await db
+    .select()
+    .from(aiAgentExecutions)
+    .where(eq(aiAgentExecutions.agentId, agentId))
+    .orderBy(desc(aiAgentExecutions.startedAt))
+    .limit(1);
+  return execution || null;
+}
+
 export async function getLastExecutionForAgentAndProduct(
   agentId: string,
   productId: string,

@@ -25,14 +25,15 @@ import { registerCompetitorAgents } from "./modules/competitors/index.js";
 import { buildApp } from "./app.js";
 import { startScheduler, stopScheduler } from "./scheduler/index.js";
 import { cancelCatchUpPass, scheduleCatchUpPass } from "./scheduler/catchUp.js";
+import { resolveServerPort } from "./http/serverPort.js";
 
 /**
- * Default 7317 — the number already in the client footer ("MCP serving
- * :7317"). One port serves the API now and localhost HTTP MCP later.
+ * One port serves the API now and localhost HTTP MCP later (resolution
+ * shared with the Settings about block via http/serverPort.ts).
  * Bind 127.0.0.1 ONLY; rung-1 team read-sharing opts into LAN exposure
  * explicitly, later.
  */
-const PORT = Number(process.env["DISCOVEREE_PORT"] || 7317);
+const PORT = resolveServerPort();
 const HOST = "127.0.0.1";
 
 async function main(): Promise<void> {

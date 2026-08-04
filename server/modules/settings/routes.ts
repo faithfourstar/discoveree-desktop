@@ -1,24 +1,28 @@
 /**
- * Settings API — LLM keys ONLY (sprint 3a minimal surface for the parallel
- * Settings client work; ADR 003 §1.1 keeps settings org-scoped and flat).
+ * Settings API (ADR 003 §1.1 keeps settings org-scoped and flat).
  *
- *   GET  /api/settings/llm-keys       → masked keys (maskApiKey; never raw)
- *   PUT  /api/settings/llm-keys       → store keys (encrypted via lib/secrets)
- *   POST /api/settings/llm-keys/test  → one cheap provider call to validate
+ *   GET  /api/settings/llm-keys        → masked keys (maskApiKey; never raw)
+ *   PUT  /api/settings/llm-keys        → store keys (encrypted via lib/secrets)
+ *   POST /api/settings/llm-keys/test   → one cheap provider call to validate
+ *   GET  /api/settings/agent-schedules → pause-all + audience-named agent rows
+ *   PUT  /api/settings/agent-schedules → persist pause-all / frequencies; same shape back
+ *   GET  /api/settings/about           → data dir, DB size, version, port
  *
- * PUT semantics per field: omitted = unchanged, null = cleared, string =
- * encrypted and stored. Responses always return the masked view — plaintext
- * keys never leave the server after storage.
+ * llm-keys PUT semantics per field: omitted = unchanged, null = cleared,
+ * string = encrypted and stored. Responses always return the masked view —
+ * plaintext keys never leave the server after storage.
  */
 import type { Express } from "express";
 import { Router } from "express";
 import { z } from "zod/v4";
-import type { Organization } from "@shared/schema";
+import { scheduleFrequencySchema, type Organization } from "@shared/schema";
 import { asyncHandler } from "../../http/asyncHandler.js";
 import { BadRequestError } from "../../http/errors.js";
 import { encrypt, maskApiKey } from "../../lib/secrets.js";
 import { getDecryptedOrgKeys, getOrganization, updateOrganization } from "../../lib/llm/keys.js";
 import { clearLlmClientCaches } from "../../lib/llm/router.js";
+import { getAboutInfo } from "./about.js";
+import { getAgentSchedulesView, updateAgentSchedules } from "./schedules.js";
 import { LLM_KEY_PROVIDERS, testProviderKey } from "./service.js";
 
 const putLlmKeysBodySchema = z.object({
@@ -28,6 +32,16 @@ const putLlmKeysBodySchema = z.object({
   claudeApiKey: z.string().trim().min(1).nullish(),
   openrouterApiKey: z.string().trim().min(1).nullish(),
   llmKeyMode: z.enum(["individual", "openrouter"]).optional(),
+});
+
+const putAgentSchedulesBodySchema = z.object({
+  pausedAll: z.boolean().optional(),
+  agents: z
+    .array(z.object({
+      slug: z.string().trim().min(1),
+      frequency: scheduleFrequencySchema,
+    }))
+    .optional(),
 });
 
 const testLlmKeyBodySchema = z.object({
@@ -113,6 +127,21 @@ export function registerSettingsRoutes(app: Express): void {
 
     const result = await testProviderKey(body.provider, apiKey);
     res.json(result);
+  }));
+
+  router.get("/settings/agent-schedules", asyncHandler(async (req, res) => {
+    res.json(await getAgentSchedulesView(req.ctx.organizationId));
+  }));
+
+  // PUT is a partial update (both fields optional per the contract); an empty
+  // body is a no-op that still returns the current view.
+  router.put("/settings/agent-schedules", asyncHandler(async (req, res) => {
+    const body = putAgentSchedulesBodySchema.parse(req.body);
+    res.json(await updateAgentSchedules(req.ctx.organizationId, body));
+  }));
+
+  router.get("/settings/about", asyncHandler(async (_req, res) => {
+    res.json(await getAboutInfo());
   }));
 
   app.use("/api", router);

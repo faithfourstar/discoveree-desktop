@@ -27,7 +27,9 @@ import {
   trackAgentExecution,
 } from "../lib/agents/executions.js";
 import { getAiAgentBySlug } from "../lib/agents/registry.js";
+import { applyFrequencyOverride } from "../lib/settings/agentScheduling.js";
 import { frequencyToMs, passesCircuitBreaker, passesCircuitBreakerForEntity } from "./gates.js";
+import { makeOrgSchedulingSettingsCache } from "./index.js";
 import {
   getEntityScheduledAgents,
   getScheduledAgents,
@@ -76,7 +78,7 @@ export async function isEntityAgentOverdue(
 export interface CatchUpResult {
   /** Product agents carry productId; entity agents carry entityId. */
   ran: Array<{ slug: string; productId?: string; entityId?: string }>;
-  skipped: Array<{ slug: string; productId?: string; entityId?: string; reason: "disabled" | "not-overdue" | "circuit-breaker" | "in-flight" }>;
+  skipped: Array<{ slug: string; productId?: string; entityId?: string; reason: "paused" | "disabled" | "not-overdue" | "circuit-breaker" | "in-flight" }>;
 }
 
 /**
@@ -101,12 +103,24 @@ export async function runCatchUpPass(): Promise<CatchUpResult> {
 
     console.log(`[CatchUp] Checking ${agents.length} agent(s) × ${products.length} product(s), plus ${entityAgents.length} entity agent(s)…`);
 
+    const orgSettings = makeOrgSchedulingSettingsCache();
+
     // Sequential by registration (module priority) order; batched per agent
     // across products with concurrency 3.
     for (const agent of agents) {
       const due: Product[] = [];
       for (const product of products) {
-        const schedule = resolveSchedule(agent, product);
+        const settings = await orgSettings(product.organizationId);
+        // Pause-all (Settings §3.4): "the launch catch-up pass skips paused
+        // agents and says nothing about them" — beyond the skip record.
+        if (settings.pausedAll) {
+          result.skipped.push({ slug: agent.slug, productId: product.id, reason: "paused" });
+          continue;
+        }
+        const schedule = applyFrequencyOverride(
+          resolveSchedule(agent, product),
+          settings.frequencies[agent.slug],
+        );
         if (!schedule.enabled) {
           result.skipped.push({ slug: agent.slug, productId: product.id, reason: "disabled" });
           continue;
@@ -158,7 +172,16 @@ export async function runCatchUpPass(): Promise<CatchUpResult> {
       }
 
       const due: EntityAgentTarget[] = [];
-      for (const target of targets) {
+      for (const rawTarget of targets) {
+        const settings = await orgSettings(rawTarget.organizationId);
+        if (settings.pausedAll) {
+          result.skipped.push({ slug: agent.slug, entityId: rawTarget.entityId, reason: "paused" });
+          continue;
+        }
+        const target: EntityAgentTarget = {
+          ...rawTarget,
+          schedule: applyFrequencyOverride(rawTarget.schedule, settings.frequencies[agent.slug]),
+        };
         if (!target.schedule.enabled) {
           result.skipped.push({ slug: agent.slug, entityId: target.entityId, reason: "disabled" });
           continue;

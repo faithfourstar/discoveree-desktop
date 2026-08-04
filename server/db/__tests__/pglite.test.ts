@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { eq, sql } from 'drizzle-orm';
 import { products, organizations } from '@shared/schema';
 import { createPgliteProvider, createInMemoryPgliteProvider } from '../pglite.js';
@@ -86,12 +87,18 @@ describe('migration idempotency (persistent directory)', () => {
       const orgs = await second.db.select().from(organizations).where(eq(organizations.slug, 'persisted-org'));
       expect(orgs).toHaveLength(1);
 
-      // Exactly one applied migration is recorded, no matter how often migrate ran
+      // Each bundled migration is recorded exactly once, no matter how often
+      // migrate ran. The expected count comes from the journal itself so the
+      // idempotency assertion survives new migrations.
+      const journal = JSON.parse(readFileSync(
+        path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../shared/migrations/meta/_journal.json'),
+        'utf8',
+      )) as { entries: unknown[] };
       const applied = await execRows<{ count: number }>(
         second.db,
         sql`select count(*)::int as count from drizzle.__drizzle_migrations`,
       );
-      expect(applied).toEqual([{ count: 1 }]);
+      expect(applied).toEqual([{ count: journal.entries.length }]);
 
       // Table count is stable (no duplicate/partial DDL).
       // 47 after the ADR 003 baseline rewrite: +competitor_entities,
