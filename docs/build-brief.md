@@ -25,7 +25,8 @@ Why desktop strengthens this rather than weakening it:
 - **Pricing: $199 per user per year** for a full (write) seat. A full seat = anyone who owns context, runs agents, accepts roadmap suggestions, or spawns deep dives.
 - **Reader seats are free** — non-negotiable, this is the growth loop. A reader's AI tools consume the team's context via MCP (read-only surface only). No licence-key friction for readers.
 - **Built-in upgrade moment:** when a reader tries to *change* the context ("add this competitor", "log this feedback"), the response offers a full seat.
-- Annual licensing means no update-window machinery: licence key carries an expiry, the app checks it.
+- Annual licensing means no update-window machinery: licence key carries an expiry, the app checks it (offline, signed — no phone-home).
+- **Trial & expiry (decided 4 Aug 2026):** licence is *offered* at install, not required — a 14-day trial runs with everything on. On trial or licence expiry the app becomes a **reader state**: a free reader seat of your own context (everything readable, MCP still serves, agents stop, writes refused with the upgrade offer). One seat model everywhere; no nag banners. Full design in docs/design/settings-spec.md.
 - **Checkout:** merchant of record (Paddle or Lemon Squeezy) — handles global VAT, invoices, licence key issuance, per-seat annual subscriptions and mid-term seat additions. ~5–7% of revenue.
 - **Distribution:** public GitHub repo (source) + own website (buy/download). Binaries may be freely downloadable with enforcement via licence key in-app (Sublime/Obsidian pattern).
 - **Prerequisites:** Apple Developer Program ($99/yr) + notarisation for macOS; Windows code signing (Azure Trusted Signing ~$10/mo). Unsigned apps don't convert.
