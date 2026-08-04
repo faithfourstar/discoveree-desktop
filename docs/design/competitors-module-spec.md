@@ -4,6 +4,7 @@
 **Date:** 3 August 2026 · **Author:** Product design
 **Basis:** `docs/design/layout-direction-2a.html` (the 2a "briefing in a shell" idiom), `docs/design/onboarding-and-home-spec.md` (staleness thresholds §B.2, evidence-cited contracts §B.3), `docs/build-brief.md` §6 (layout grammar), and the SaaS content inventory in `competitors.tsx`, `competitor-detail.tsx`, `competitor-profiles-summary.tsx`, `competitor-compare.tsx`.
 **Status:** Ready for build. Spec only — nothing here is implemented.
+**Typography amendment (4 Aug 2026, owner-final):** mono usage in this spec is superseded by `docs/design/typography-ruling.md` §0 — everywhere this document says "mono" (kickers, meta lines, stamps, figures, chips, badges `DIRECT`/`NEW`, threat words), render Inter at the ruling's sizes/greys, with tabular-nums where digits align or tick (table view, elapsed counters). Mono survives only in the developer-artifact class defined there.
 
 All copy is final British English unless marked *(placeholder)*. Layout terms refer to the implemented shell: dark 84px rail, 48px top bar with ⌘K, centred **720px** prose-first column, 30px mono status footer. Tokens as used in `HomePage.tsx` / `CompetitorsPage.tsx`: `text-ink` prose, `text-body` secondary, `text-faint`/`text-ghost` quiet, `text-label` mono kickers, `text-teal-deep` actions, `edge-hairline` dividers, `bg-chip` evidence chips.
 

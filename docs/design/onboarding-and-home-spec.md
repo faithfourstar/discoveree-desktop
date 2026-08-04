@@ -3,6 +3,7 @@
 **UX specification · v1**
 **Date:** 3 August 2026 · **Author:** Product design, with reference to `docs/build-brief.md` §4–§6 and `design_guidelines.md`
 **Status:** Ready for build. Spec only — no components are implemented here.
+**Typography amendment (4 Aug 2026, owner-final):** the mono rules in §0.3 and §B are superseded by `docs/design/typography-ruling.md` §0 — figures, timestamps, kickers, meta/provenance lines, chips and footer copy all render Inter (tabular-nums where digits align or tick); mono survives only in the developer-artifact class defined there (config snippets, the copyable prompt chip, key fields).
 
 All copy in this document is final, British English copy unless marked *(placeholder)*. Layout terms refer to the design system: shadcn/ui "New York", Inter for body text, JetBrains Mono for data/metrics/timestamps, light and dark modes both first-class.
 

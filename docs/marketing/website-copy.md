@@ -43,7 +43,7 @@ What changed from the current site and why:
 Your AI tools are brilliant. They just don't know your product.
 
 **Subheadline**
-Discoveree is a local, agent-maintained context layer for your product — strategy, competitors, customer feedback, and your own feature inventory. It joins up intel from the web and from your internal tools — Slack or Teams, your CRM, customer calls — and serves it to Claude, Copilot, Cursor, ChatGPT, or any AI tool your team already uses.
+Discoveree is a local, agent-maintained context layer for your product — strategy, competitors, customer feedback, and your own feature inventory. It joins up intel from the web and from your internal tools — Slack or Teams, your CRM, customer calls — and serves it to Claude, Copilot, Cursor, ChatGPT, or any AI tool your team already uses. Every answer, for every teammate and every agent, drawn from cited, fresh, structured knowledge of your product and landscape.
 
 **Supporting line**
 Runs on your desktop. Your data never leaves your machine. Bring your own API keys.
@@ -106,7 +106,8 @@ Agents maintain the context. Your AI tools consume it.
 - And you can watch it being used: "Claude — 118 queries this week, mostly Competitors and Feedback themes"
 
 **Right column — What your AI can suddenly do**
-- Answer "what's changed with competitor X?" with today's answer, not training data
+- Answer with cited, fresh, structured knowledge of your product and landscape — not training data, not guesses
+- Answer "what's changed with competitor X?" with today's answer
 - Pressure-test an idea against real feedback themes and strategy
 - Judge whether the roadmap matches the evidence
 - Write PRDs, battlecards and launch content grounded in the same shared truth

@@ -147,7 +147,7 @@ Current flow (details → LLM keys → billing) is replaced. Billing step is del
 
 1. **Your product** — one URL; auto-detection agent drafts profile, proposes competitors. Keep magical.
 2. **What should Discoveree do?** — multi-select of JOBS (not features), each switching on exactly one module: track competitors / understand customers & feedback / keep strategy sharp / check we're building the most valuable things / feed context to my AI tools.
-3. **Your AI tools** — Claude, Cursor, ChatGPT, custom → generates ready-to-paste MCP config per tool. This is the activation moment.
+3. **Your AI tools** — Claude, Cursor, ChatGPT, GitHub Copilot (VS Code — named row, owner decision 4 Aug 2026: the Microsoft market's day-one door), custom → generates ready-to-paste MCP config per tool. This is the activation moment.
 4. **Your data tools** — Jira/Linear, Slack, analytics, none → sets up polling/MCP client connections (for Roadmap Review, this is both source and destination).
 5. **LLM keys** — one key from any provider is enough; router handles fallback.
 
