@@ -109,6 +109,12 @@ Design notes:
 - **Onboarding:** gates via a sixth step-2 job (e.g. "Keep our commercial model sharp"); same rule as all modules — unchosen, it doesn't appear.
 - Cross-links: segment definitions shared with Customer Insights (one segment vocabulary, not two).
 
+## 4c. Multi-product organisations (requirement recorded 4 Aug 2026; design in ADR 003)
+
+Individual users mostly work on one product, but larger security-conscious orgs — the desktop edition's strongest audience — will have several products, and leaders need access across all of them. End-state: leaders make investment decisions (expected revenue, growth, costs) across products — portfolio-level business goals, built on per-product Commercial Model data (§4b).
+
+Schema already supports org → many products with product-scoped context (protected by ADR 001's tenancy decision); the current single-product API surface is a convenience layer, not a constraint. The open design (ADR 003) is **cross-product entity identity**: org-level canonical entities (a competitor as a company, researched once; a segment/persona) with product-scoped facets (threat level and feature comparison per product; jobs-to-be-done per product even when the persona is shared). Must be settled before the Customer Insights port. Team tier will also need per-product access control back (leaders all-product; product teams theirs).
+
 ## 5. Onboarding (5 steps; answers gate modules)
 
 Current flow (details → LLM keys → billing) is replaced. Billing step is deleted (licence entered at install).
