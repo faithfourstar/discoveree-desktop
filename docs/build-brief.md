@@ -41,6 +41,8 @@ The website (built by Faith in Lovable) carries a launch-offer banner, a referra
 2. **Referral surface.** "Recommend Discoveree" appears in-app at the same value moments (and in Settings), sharing the website referral link. Incentive structure still undecided (goodwill vs give-a-month/get-a-month — check MoR coupon support before promising anything).
 3. **Organisation counter.** The website shows "X organisations building their context layer". **Source of truth is licence issuance, not the app**: paid seats + launch-offer keys from the merchant-of-record, deduplicated by organisation. The app must NOT phone home for this — §2's licence check is explicitly offline/no-phone-home, and "your data never leaves your machine" is the headline security claim; runtime telemetry would contradict it. (If a "currently using" signal is ever wanted, it's a separate, explicit, default-off opt-in — not part of this counter.) Counter mechanics live entirely in the website/MoR webhook layer; the desktop app's only involvement is none.
 
+**Messaging log (standing convention, 4 Aug 2026):** the website copy lives at docs/marketing/website-copy.md and messaging-worthy build decisions accumulate in docs/marketing/messaging-log.md. Whenever a design or build session decides a **user-visible behaviour worth marketing** (e.g. the roadmap-review regression rule: post-fix complaints re-escalate rather than staying buried under "addressed"), append a row to the log at the moment of decision — claim in customer language, source doc cited, status `new`. Periodic copy-sync sessions work the log (`new` → `in copy`) instead of re-reading the whole doc tree. Pure implementation detail does not belong in the log; the test is "would the website, a launch post, or a sales conversation want to say this?"
+
 ## 3. Module map
 
 Test applied to every feature: **does it create or serve context, or consume it?** Creators/servers stay. Consumers are what the customer's AI does via MCP — with one deliberate exception (Roadmap Review & Suggestions, see §4).
@@ -211,11 +213,11 @@ Concede honestly: for a solo PM with light needs, that rig is a partial substitu
 
 Strategic corollary: Claude is a **consumer** of the context layer, never a competitor to it. Do not build chat/research/generation features Claude already does well; over-invest in schema, pipelines, provenance, governance. Bar to clear: the customer must feel the difference between "Claude with my docs" and "Claude with Discoveree" in week one. Sales one-liner: *you could run sales from a Claude project too; nobody does — Discoveree is the system of record for product context.*
 
-**Suggested sequence:**
-1. Stand up the fresh repo: licence, skeleton, CI.
-2. Port the DB seam first (Neon → PGlite behind an interface) — everything layers on it. Then storage (GCS → local FS) and auth removal (single-user).
-3. Extract the keep-modules; delete cut-modules rather than porting them.
-4. Onboarding wizard with module gating; Context Health home; layout grammar (block/object/thread) — a real front-end rework, budget accordingly.
-5. MCP: stdio launcher (headless-capable) + localhost HTTP; "connect a teammate" flow.
-6. Roadmap Review & Suggestions evaluative agent + weekly report.
-7. Licensing (key with expiry, offline signed validation), Paddle/Lemon Squeezy checkout, code signing + auto-update feed, Tauri/Electron packaging.
+**Sequence (updated 4 Aug 2026 — steps 1–3 done through sprint 3a/Settings; 3b in build):**
+1. ~~Repo: licence, skeleton, CI.~~ Done.
+2. ~~DB seam (PGlite behind an interface), storage, auth removal.~~ Done (ADR 001).
+3. ~~First verticals: Competitive Intelligence (ADR 002, proposal gate), multi-product entities (ADR 003), Settings + BYO keys.~~ Done. **Sprint 3b (Customer Insights, ADR 004) in build.**
+4. **MCP sprint (next after 3b — owner-agreed 4 Aug):** the wedge, both directions. Serve: stdio launcher (headless-capable, lock-file handshake per ADR 001) + localhost HTTP; "connect a teammate" flow; read-only reader surface. Write: `log_feedback` / `propose_competitor_intel` tools through the §4a proposal queue — internal-tool evidence (Slack, CRM) arrives via the customer's own AI with provenance; one build covers every tool, native pollers become later refinements.
+5. Sprint 4: own-product pipelines (help-centre crawler, GitHub releases, product_features) + product profile surface + onboarding wizard with module gating — unlocks "versus you" comparisons and §4-loop pieces 2–3.
+6. Roadmap Review & Suggestions evaluative agent + weekly report (+ §4-loop iteration suggestions).
+7. Licensing (key with expiry, offline signed validation), Paddle/Lemon Squeezy checkout, code signing + auto-update feed, Tauri packaging.
