@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { EvidenceRow } from "@/components/EvidenceChip";
+import { useProductHref } from "@/lib/productUrl";
+import { countNoun } from "@/lib/text";
 import { competitorPath } from "@/mock/competitors";
 import type { CompetitorRow } from "@/mock/types";
 import { ClassificationBadge, NewTag } from "./chips";
@@ -13,7 +15,7 @@ export function MetaLine({ row }: { row: CompetitorRow }) {
     segments.push(`sentiment ${row.sentiment}`);
   }
   if (row.reviewCount !== undefined) {
-    segments.push(`${row.reviewCount} reviews`);
+    segments.push(countNoun(row.reviewCount, "review"));
   }
   return (
     <div className="font-mono text-xs tabular-nums text-faint">
@@ -44,8 +46,9 @@ export function CompetitorRowCard({
   onCheck: () => void;
 }) {
   const [, navigate] = useLocation();
+  const productHref = useProductHref();
   const [pausedNote, setPausedNote] = useState(false);
-  const path = competitorPath(row.id);
+  const path = productHref(competitorPath(row.id));
 
   const handleCheckNow = () => {
     if (agentsPaused) {

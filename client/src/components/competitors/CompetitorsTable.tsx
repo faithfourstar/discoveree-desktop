@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
+import { useProductHref } from "@/lib/productUrl";
 import { competitorPath, threatRank } from "@/mock/competitors";
 import type { CompetitorChecking, CompetitorRow } from "@/mock/types";
 import { ClassificationBadge, NewTag } from "./chips";
@@ -105,6 +106,7 @@ export function CompetitorsTable({
   onCheck: (id: string) => void;
 }) {
   const [, navigate] = useLocation();
+  const productHref = useProductHref();
   const [sortKey, setSortKey] = useState<SortKey>("default");
   const [ascending, setAscending] = useState(true);
 
@@ -169,7 +171,7 @@ export function CompetitorsTable({
           return (
             <tr
               key={row.id}
-              onClick={() => navigate(competitorPath(row.id))}
+              onClick={() => navigate(productHref(competitorPath(row.id)))}
               className={[
                 "cursor-pointer border-b border-edge-hairline align-baseline",
                 justVerifiedId === row.id ? "tint-fade" : "",

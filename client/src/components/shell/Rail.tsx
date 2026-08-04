@@ -1,14 +1,17 @@
 import { Link, useLocation } from "wouter";
+import { productSubpath, useProductHref } from "@/lib/productUrl";
 import { moduleRegistry, type ModuleDef } from "@/modules/registry";
 import { useAppState } from "@/state/AppStateContext";
 import type { ModuleState } from "@/mock/types";
 
 function RailItem({
   module,
+  href,
   state,
   active,
 }: {
   module: ModuleDef;
+  href: string;
   state: ModuleState;
   active: boolean;
 }) {
@@ -16,7 +19,7 @@ function RailItem({
   const dimmed = !state.populated && !active;
   return (
     <Link
-      href={module.path}
+      href={href}
       className={[
         "relative flex w-full flex-col items-center gap-[7px] rounded-[9px] pb-2 pt-[9px] transition-colors",
         active
@@ -55,9 +58,12 @@ function RailItem({
 export function Rail() {
   const { modules } = useAppState();
   const [location] = useLocation();
+  const productHref = useProductHref();
 
+  // Module paths are matched beneath the product prefix (ADR 003 §1.2).
+  const subpath = productSubpath(location);
   const isActive = (path: string) =>
-    path === "/" ? location === "/" : location.startsWith(path);
+    path === "/" ? subpath === "/" : subpath.startsWith(path);
 
   return (
     <nav
@@ -74,6 +80,7 @@ export function Rail() {
           <RailItem
             key={module.id}
             module={module}
+            href={productHref(module.path)}
             state={modules[module.id]}
             active={isActive(module.path)}
           />

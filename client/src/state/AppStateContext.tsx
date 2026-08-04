@@ -5,7 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useSearch } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import {
   AppStateBridge,
   useAppActions,
@@ -13,11 +13,14 @@ import {
   type AppActions,
 } from "./appStateCore";
 import { LiveAppStateProvider } from "./LiveAppStateProvider";
+import { competitorsViewKey } from "@/lib/storageKeys";
+import { parseProductId, productBase } from "@/lib/productUrl";
 import {
   domainFromName,
   formatElapsed,
   initialAddFlow,
   insertionIndex,
+  makeAdoptionProposal,
   makeProposal,
   makeStageScripts,
   makeStages,
@@ -30,12 +33,13 @@ import {
   deriveObjectFromRow,
   type ResearchStageScript,
 } from "@/mock/competitors";
-import { makeAppState } from "@/mock/data";
+import { analyticsProduct, makeAppState, relayProduct } from "@/mock/data";
 import type {
   AppState,
   CompetitorObject,
   CompetitorRow,
   MockScenarioKey,
+  ProductRef,
   RichText,
 } from "@/mock/types";
 
@@ -47,7 +51,9 @@ import type {
  *
  * Dev affordance: `?state=` switches datasets — `briefing` (default),
  * `day-one`, `proposals`, `many`, `quiet`, `checking`, `no-search-key`,
- * `no-llm-key`. The choice is sticky across navigation.
+ * `no-llm-key`, `multi-product`. The choice is sticky across navigation.
+ * `multi-product` serves two products: switch to Relay Sync in the top bar
+ * and research e.g. mixpanel.com to see the adoption proposal card.
  */
 
 const MOCK_SCENARIOS: readonly MockScenarioKey[] = [
@@ -59,9 +65,9 @@ const MOCK_SCENARIOS: readonly MockScenarioKey[] = [
   "checking",
   "no-search-key",
   "no-llm-key",
+  "multi-product",
 ];
 
-const VIEW_STORAGE_KEY = "discoveree.competitors.view";
 const CHECK_DURATION_S = 8;
 
 // ---------------------------------------------------------------------------
@@ -75,11 +81,12 @@ function todayShort(): string {
   }).format(new Date());
 }
 
-function withStoredView(state: AppState): AppState {
+function withStoredView(state: AppState, productId: string | null): AppState {
+  const keyProduct = productId ?? state.products[0]?.id;
   const stored =
-    typeof window === "undefined"
+    typeof window === "undefined" || !keyProduct
       ? null
-      : window.localStorage.getItem(VIEW_STORAGE_KEY);
+      : window.localStorage.getItem(competitorsViewKey(keyProduct));
   if (
     (stored === "cards" || stored === "table") &&
     state.competitorsOverview &&
@@ -180,13 +187,66 @@ function addCompetitor(
 
 export function MockAppStateProvider({ children }: { children: ReactNode }) {
   const search = useSearch();
+  const [location, navigate] = useLocation();
   const requestedParam = new URLSearchParams(search).get("state");
   const requested = MOCK_SCENARIOS.find((key) => key === requestedParam);
+  const activeProductId = parseProductId(location);
+
+  /** Products created via "Add another product" this session. */
+  const extraProductsRef = useRef<ProductRef[]>([]);
+
+  /**
+   * Dataset build: the scenario's state for the product in the URL, plus
+   * any session-created products (which start empty — day-one competitors,
+   * blank home).
+   */
+  const buildState = (
+    scenario: MockScenarioKey,
+    productId: string | null,
+  ): AppState => {
+    const base = makeAppState(scenario, productId ?? undefined);
+    const extras = extraProductsRef.current;
+    const products = [...base.products, ...extras];
+    const extra = productId
+      ? extras.find((candidate) => candidate.id === productId)
+      : undefined;
+    if (extra) {
+      return withStoredView(
+        {
+          ...base,
+          products,
+          productName: extra.name,
+          home: null,
+          dayOne: null,
+          competitorsOverview: null,
+          competitors: {},
+          competitorAddFlow: { ...initialAddFlow },
+          onboardingProposals: null,
+          modules: {
+            ...base.modules,
+            competitors: { enabled: true, populated: false },
+          },
+        },
+        productId,
+      );
+    }
+    return withStoredView({ ...base, products }, productId);
+  };
+  const buildStateRef = useRef(buildState);
+  buildStateRef.current = buildState;
+
   const [state, setState] = useState<AppState>(() =>
-    withStoredView(makeAppState("briefing")),
+    buildState(requested ?? "briefing", activeProductId),
   );
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  const activeProductIdRef = useRef(activeProductId);
+  activeProductIdRef.current = activeProductId;
+  /** The product the current dataset was built for. */
+  const builtForProductRef = useRef<string | null>(activeProductId);
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   /** Base agents footer segment, restored when a run completes. */
   const baseAgentsRef = useRef<string | undefined>(state.footer.agents);
@@ -393,6 +453,37 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
     const runResearch = (domain: string, options?: { neverFail?: boolean }) => {
       clearFlowTimers();
       const current = stateRef.current;
+
+      // Multi-product harness: researching from the second product a
+      // competitor the first product already tracks short-circuits to the
+      // adoption proposal — the entity exists in the org, its profile
+      // renders instantly, nothing is re-researched (ADR 003 §2.3).
+      if (
+        current.mockScenario === "multi-product" &&
+        activeProductIdRef.current === relayProduct.id
+      ) {
+        const stem = domain.split(".")[0] ?? domain;
+        const alreadyHere = current.competitorsOverview?.rows.some(
+          (row) => (row.domain.split(".")[0] ?? row.domain) === stem,
+        );
+        const adoption = alreadyHere
+          ? null
+          : makeAdoptionProposal(domain, analyticsProduct.name);
+        if (adoption) {
+          setState((prev) => ({
+            ...prev,
+            competitorAddFlow: {
+              ...prev.competitorAddFlow,
+              open: true,
+              phase: "proposal",
+              stages: [],
+              proposal: adoption,
+            },
+          }));
+          return;
+        }
+      }
+
       const searchKeyMissing =
         current.competitorsOverview?.searchKeyMissing ?? false;
       const scripts = makeStageScripts(domain, searchKeyMissing);
@@ -460,9 +551,17 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
       });
     };
 
+    const persistView = (view: "cards" | "table") => {
+      const productId =
+        activeProductIdRef.current ?? stateRef.current.products[0]?.id;
+      if (productId) {
+        window.localStorage.setItem(competitorsViewKey(productId), view);
+      }
+    };
+
     return {
       setCompetitorsView: (view) => {
-        window.localStorage.setItem(VIEW_STORAGE_KEY, view);
+        persistView(view);
         setState((prev) =>
           prev.competitorsOverview
             ? {
@@ -477,7 +576,7 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
           stateRef.current.competitorsOverview?.view === "table"
             ? "cards"
             : "table";
-        window.localStorage.setItem(VIEW_STORAGE_KEY, view);
+        persistView(view);
         setState((prev) =>
           prev.competitorsOverview
             ? {
@@ -685,6 +784,40 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
       },
       // Orphaned proposals are a live-mode concern; mocks have none.
       resumeProposal: () => undefined,
+      createProduct: ({ url }) => {
+        const domain = normaliseDomain(url);
+        if (!domain) {
+          setState((prev) => ({
+            ...prev,
+            productCreate: {
+              pending: false,
+              error:
+                "That doesn’t look like a web address — try something like acme.com.",
+            },
+          }));
+          return;
+        }
+        const stem = domain.split(".")[0] ?? domain;
+        const name = stem.charAt(0).toUpperCase() + stem.slice(1);
+        const taken = new Set([
+          ...stateRef.current.products.map((product) => product.id),
+          ...extraProductsRef.current.map((product) => product.id),
+        ]);
+        let id = stem;
+        let suffix = 2;
+        while (taken.has(id)) {
+          id = `${stem}-${suffix}`;
+          suffix += 1;
+        }
+        const product: ProductRef = { id, name };
+        extraProductsRef.current = [...extraProductsRef.current, product];
+        setState((prev) => ({
+          ...prev,
+          products: [...prev.products, product],
+          productCreate: { pending: false, error: null },
+        }));
+        navigateRef.current(productBase(id));
+      },
       trackOnboardingProposals: (ids) => {
         setState((prev) => {
           const seeds = (prev.onboardingProposals ?? []).filter((seed) =>
@@ -707,7 +840,10 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
                 ? [
                     { text: String(rows.length), tone: "mono" },
                     {
-                      text: ` competitors are now tracked. First profiles are drafted and their sources are being watched — the next check runs on schedule.`,
+                      text:
+                        rows.length === 1
+                          ? ` competitor is now tracked. Its first profile is drafted and its sources are being watched — the next check runs on schedule.`
+                          : ` competitors are now tracked. First profiles are drafted and their sources are being watched — the next check runs on schedule.`,
                     },
                   ]
                 : [],
@@ -730,24 +866,44 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // Scenario switching (dev affordance).
+  // The initial dataset is built in the state initialiser, so a direct
+  // landing on ?state=checking needs its mid-run agents started here
+  // (spec 4.2); scenario *switches* start them in the effect below.
   useEffect(() => {
-    if (!requested || requested === stateRef.current.mockScenario) {
-      return;
-    }
-    clearFlowTimers();
-    clearCheckInterval();
-    const next = withStoredView(makeAppState(requested));
-    baseAgentsRef.current = next.footer.agents;
-    setState(next);
-    if (requested === "checking") {
-      // Land mid-run: two agents already at work (spec 4.2).
+    if (stateRef.current.mockScenario === "checking") {
       window.setTimeout(() => {
         actions.checkCompetitor("competitor:mixpanel");
         actions.checkCompetitor("competitor:posthog");
       }, 0);
     }
-  }, [requested, actions]);
+  }, [actions]);
+
+  // Scenario switching (dev affordance) and product switching (ADR 003:
+  // the dataset follows the product in the URL; switching swaps it cleanly).
+  useEffect(() => {
+    const scenario = requested ?? stateRef.current.mockScenario;
+    const scenarioChanged = scenario !== stateRef.current.mockScenario;
+    const productChanged =
+      activeProductId !== null &&
+      activeProductId !== builtForProductRef.current;
+    if (!scenarioChanged && !productChanged) {
+      return;
+    }
+    clearFlowTimers();
+    clearCheckInterval();
+    const next = buildStateRef.current(scenario, activeProductId);
+    builtForProductRef.current = activeProductId;
+    baseAgentsRef.current = next.footer.agents;
+    setState(next);
+    if (scenario === "checking") {
+      // Land mid-run: two agents already at work (spec 4.2). Re-kicked on
+      // any rebuild so the URL-guard redirect cannot strand a quiet state.
+      window.setTimeout(() => {
+        actions.checkCompetitor("competitor:mixpanel");
+        actions.checkCompetitor("competitor:posthog");
+      }, 0);
+    }
+  }, [requested, activeProductId, actions]);
 
   // Stop the shared interval when nothing is being checked.
   useEffect(() => {

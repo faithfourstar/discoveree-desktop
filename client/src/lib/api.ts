@@ -1,3 +1,4 @@
+import { countNoun } from "@/lib/text";
 import type {
   CompetitorObject,
   CompetitorProposal,
@@ -87,6 +88,19 @@ export interface ServerCompetitorCard {
    * to "tracked". Proposed rows live only inside the add flow.
    */
   status: "proposed" | "tracked";
+  /**
+   * ADR 003 §2.5: the card keeps the facet id as `id` and gains the
+   * org-level entity id it points at. Optional until the entity-join
+   * payload lands server-side.
+   */
+  entityId?: string;
+  /**
+   * ADR 003 §2.3/§2.5 adoption + cross-product linking: the org's OTHER
+   * products holding a tracked facet on the same entity. Non-empty on a
+   * proposed row means this proposal is an adoption — the entity was
+   * researched once already and nothing is re-researched.
+   */
+  alsoTrackedBy?: { productId: string; productName: string }[];
 }
 
 export interface ServerChange {
@@ -126,33 +140,53 @@ export interface ServerFeedChange extends ServerChange {
 }
 
 // ---------------------------------------------------------------------------
-// Endpoints
+// Endpoints — product-scoped resources live under /api/products/:productId
+// (ADR 003 §1.1; the singular /api/product convention is deleted, not
+// aliased). Org-scoped resources stay flat.
 // ---------------------------------------------------------------------------
 
+function productApi(productId: string, path: string): string {
+  return `/api/products/${encodeURIComponent(productId)}${path}`;
+}
+
 export const api = {
-  getProduct: () =>
-    request<{ product: ServerProduct | null }>("/api/product"),
-  listCompetitors: (includeProposed = false) =>
+  listProducts: () =>
+    request<{ products: ServerProduct[] }>("/api/products"),
+  createProduct: (body: { name: string; url?: string }) =>
+    request<{ product: ServerProduct }>("/api/products", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getProduct: (productId: string) =>
+    request<{ product: ServerProduct }>(productApi(productId, "")),
+  listCompetitors: (productId: string, includeProposed = false) =>
     request<{ competitors: ServerCompetitorCard[] }>(
-      includeProposed ? "/api/competitors?include=proposed" : "/api/competitors",
+      productApi(
+        productId,
+        includeProposed ? "/competitors?include=proposed" : "/competitors",
+      ),
     ),
-  getCompetitor: (id: string) =>
+  getCompetitor: (productId: string, id: string) =>
     request<{
       competitor: ServerCompetitorDetail;
       changes: ServerChange[];
       openThread: null;
       filedThreads: [];
-    }>(`/api/competitors/${encodeURIComponent(id)}`),
-  createCompetitor: (body: {
-    name: string;
-    url?: string;
-    classification: "DIRECT" | "ADJACENT";
-  }) =>
-    request<{ competitor: ServerCompetitorCard }>("/api/competitors", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+    }>(productApi(productId, `/competitors/${encodeURIComponent(id)}`)),
+  createCompetitor: (
+    productId: string,
+    body: {
+      name: string;
+      url?: string;
+      classification: "DIRECT" | "ADJACENT";
+    },
+  ) =>
+    request<{ competitor: ServerCompetitorCard }>(
+      productApi(productId, "/competitors"),
+      { method: "POST", body: JSON.stringify(body) },
+    ),
   patchCompetitor: (
+    productId: string,
     id: string,
     body: {
       classification?: "DIRECT" | "ADJACENT";
@@ -163,28 +197,29 @@ export const api = {
     },
   ) =>
     request<{ competitor: ServerCompetitorCard }>(
-      `/api/competitors/${encodeURIComponent(id)}`,
+      productApi(productId, `/competitors/${encodeURIComponent(id)}`),
       { method: "PATCH", body: JSON.stringify(body) },
     ),
-  deleteCompetitor: (id: string) =>
-    request<void>(`/api/competitors/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    }),
-  refreshCompetitor: (id: string) =>
+  deleteCompetitor: (productId: string, id: string) =>
+    request<void>(
+      productApi(productId, `/competitors/${encodeURIComponent(id)}`),
+      { method: "DELETE" },
+    ),
+  refreshCompetitor: (productId: string, id: string) =>
     request<{ runId: string }>(
-      `/api/competitors/${encodeURIComponent(id)}/refresh`,
+      productApi(productId, `/competitors/${encodeURIComponent(id)}/refresh`),
       { method: "POST" },
     ),
-  acceptCompetitor: (id: string) =>
+  acceptCompetitor: (productId: string, id: string) =>
     request<{ competitor: ServerCompetitorCard }>(
-      `/api/competitors/${encodeURIComponent(id)}/accept`,
+      productApi(productId, `/competitors/${encodeURIComponent(id)}/accept`),
       { method: "POST" },
     ),
-  getActiveRun: () =>
-    request<ServerActiveRun>("/api/competitors/runs/active"),
-  listChanges: (limit = 50, offset = 0) =>
+  getActiveRun: (productId: string) =>
+    request<ServerActiveRun>(productApi(productId, "/competitors/runs/active")),
+  listChanges: (productId: string, limit = 50, offset = 0) =>
     request<{ changes: ServerFeedChange[]; total: number }>(
-      `/api/changes?limit=${limit}&offset=${offset}`,
+      productApi(productId, `/changes?limit=${limit}&offset=${offset}`),
     ),
 };
 
@@ -437,16 +472,31 @@ export function objectFromDetail(
   return object;
 }
 
+/** "Product A", "Product A and Product B", "Product A, Product B and C". */
+export function joinNames(names: readonly string[]): string {
+  if (names.length <= 1) {
+    return names[0] ?? "";
+  }
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1] ?? ""}`;
+}
+
 /**
  * The 2.4 proposal card, populated from the proposed row's real draft
  * (GET /:id). Nothing is invented: absent draft material renders absent,
  * and a failed first enrichment carries an honest failure note — accepting
  * anyway is the spec-5.1 save-unverified path.
+ *
+ * When the row's entity is already tracked by other products of the org
+ * (`alsoTrackedBy`, ADR 003 §2.3), the card becomes its adoption variant:
+ * the profile is the entity's existing one, rendered instantly.
  */
 export function proposalFromDetail(
   detail: ServerCompetitorDetail,
 ): CompetitorProposal {
   const failed = detail.enrichmentStatus === "failed";
+  const adoptedFrom = (detail.alsoTrackedBy ?? []).map(
+    (product) => product.productName,
+  );
   const evidence: EvidenceRef[] = [];
   if (detail.summarySourceUrl) {
     evidence.push({
@@ -462,7 +512,7 @@ export function proposalFromDetail(
     evidence.push({
       id: `ev:${detail.id}-features`,
       kind: "feature-inventory",
-      label: `${detail.keyFeatures.length} features`,
+      label: countNoun(detail.keyFeatures.length, "feature"),
       count: detail.keyFeatures.length,
       objectId: `competitor:${detail.id}:features`,
       ...(detail.keyFeatures[0]?.sourceUrl
@@ -471,16 +521,20 @@ export function proposalFromDetail(
     });
   }
   const summaryParts: string[] = [
-    failed
-      ? `${detail.name} · first check couldn’t finish`
-      : `Read ${detail.domain ?? detail.name}`,
+    adoptedFrom.length > 0
+      ? `Found in your organisation’s context — already tracked for ${joinNames(adoptedFrom)}`
+      : failed
+        ? `${detail.name} · first check couldn’t finish`
+        : `Read ${detail.domain ?? detail.name}`,
   ];
   if (!failed) {
     if (detail.keyDifferentiators.length > 0) {
-      summaryParts.push(`${detail.keyDifferentiators.length} differentiators`);
+      summaryParts.push(
+        countNoun(detail.keyDifferentiators.length, "differentiator"),
+      );
     }
     if (detail.keyFeatures.length > 0) {
-      summaryParts.push(`${detail.keyFeatures.length} features`);
+      summaryParts.push(countNoun(detail.keyFeatures.length, "feature"));
     }
   }
   const proposal: CompetitorProposal = {
@@ -506,6 +560,9 @@ export function proposalFromDetail(
   }
   if (detail.reviewCount !== null) {
     proposal.reviewCount = detail.reviewCount;
+  }
+  if (adoptedFrom.length > 0) {
+    proposal.adoption = { otherProductNames: adoptedFrom };
   }
   if (failed) {
     proposal.failureNote =

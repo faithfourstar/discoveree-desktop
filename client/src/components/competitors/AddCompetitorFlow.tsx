@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { EvidenceRow } from "@/components/EvidenceChip";
+import { joinNames } from "@/lib/api";
 import { provenanceLine } from "@/mock/competitors";
 import { useAppActions, useAppState } from "@/state/AppStateContext";
 import type { AddStage, CompetitorProposal } from "@/mock/types";
@@ -111,15 +112,31 @@ function ProposalCard({ proposal }: { proposal: CompetitorProposal }) {
         <div className="mb-4 font-mono text-xs text-faint">
           {proposal.domain} · suggested: {proposal.suggestedThreat}
         </div>
+        {proposal.adoption ? (
+          // ADR 003 §2.3 adoption variant: the entity already exists in the
+          // organisation — the profile below is reused, not re-researched.
+          <div className="mb-4 rounded-[9px] border border-edge bg-inset px-4 py-3 text-[13px] leading-[1.6] text-body">
+            <span className="font-medium text-ink">
+              Already tracked for{" "}
+              {joinNames(proposal.adoption.otherProductNames)}
+            </span>{" "}
+            — adopt them for this product? The profile below is what your
+            organisation already knows; tracking here reuses it, and only the
+            comparison against this product is drawn up afresh.
+          </div>
+        ) : null}
         <p className="mb-5 text-[15px] leading-[1.65] text-ink [text-wrap:pretty]">
           {proposal.summary}
         </p>
-        <div className="mb-5">
-          <CapabilityColumns
-            theyBeatYouOn={proposal.theyBeatYouOn}
-            youBeatThemOn={proposal.youBeatThemOn}
-          />
-        </div>
+        {proposal.theyBeatYouOn.length > 0 ||
+        proposal.youBeatThemOn.length > 0 ? (
+          <div className="mb-5">
+            <CapabilityColumns
+              theyBeatYouOn={proposal.theyBeatYouOn}
+              youBeatThemOn={proposal.youBeatThemOn}
+            />
+          </div>
+        ) : null}
         {proposal.differentiators && proposal.differentiators.length > 0 ? (
           <div className="mb-5">
             <div className="mb-2.5 font-mono text-[10.5px] font-semibold uppercase tracking-[0.08em] text-label">

@@ -1,3 +1,4 @@
+import { countNoun } from "@/lib/text";
 import type {
   AddFlowState,
   AddStage,
@@ -490,25 +491,63 @@ const quietRows = orderRows([
 ]);
 
 // ---------------------------------------------------------------------------
+// Rows — the second product's set (multi-product scenario, ADR 003)
+// ---------------------------------------------------------------------------
+
+const fivetranRow: CompetitorRow = {
+  id: "competitor:fivetran",
+  name: "Fivetran",
+  classification: "DIRECT",
+  domain: "fivetran.com",
+  threat: "competitive",
+  sentiment: 62,
+  reviewCount: 58,
+  verifiedAgo: "5 h ago",
+  stale: false,
+  verifiedOrder: 5,
+  confirmedQuietSince: "27 Jul",
+};
+
+const hightouchRow: CompetitorRow = {
+  id: "competitor:hightouch",
+  name: "Hightouch",
+  classification: "ADJACENT",
+  domain: "hightouch.com",
+  threat: "watch",
+  verifiedAgo: "1 d ago",
+  stale: false,
+  verifiedOrder: 24,
+  confirmedQuietSince: "25 Jul",
+};
+
+const relayRows = orderRows([fivetranRow, hightouchRow]);
+
+// ---------------------------------------------------------------------------
 // Overview factories
 // ---------------------------------------------------------------------------
 
-export type OverviewVariant = "briefing" | "many" | "quiet";
+export type OverviewVariant = "briefing" | "many" | "quiet" | "relay";
 
 export function makeOverview(
   variant: OverviewVariant,
   options?: { searchKeyMissing?: boolean },
 ): CompetitorsOverview {
   const rows =
-    variant === "many" ? manyRows : variant === "quiet" ? quietRows : briefingRows;
+    variant === "many"
+      ? manyRows
+      : variant === "quiet"
+        ? quietRows
+        : variant === "relay"
+          ? relayRows
+          : briefingRows;
   const highlights =
     variant === "many"
       ? manyHighlights
-      : variant === "quiet"
+      : variant === "quiet" || variant === "relay"
         ? []
         : briefingHighlights;
   return {
-    lede: buildLede(rows, highlights, "Thursday"),
+    lede: buildLede(rows, highlights, variant === "relay" ? "Tuesday" : "Thursday"),
     rows: rows.map((row) => ({ ...row })),
     view: "cards",
     searchKeyMissing: options?.searchKeyMissing ?? false,
@@ -1012,6 +1051,62 @@ export function makeProposal(
   };
 }
 
+/**
+ * Multi-product harness (ADR 003 §2.3): researching a competitor the OTHER
+ * product already tracks resolves to an adoption proposal — the entity's
+ * existing profile, rendered instantly, nothing re-researched. Matched on
+ * the domain stem so name-mode input ("Mixpanel") adopts too.
+ */
+export function makeAdoptionProposal(
+  domain: string,
+  otherProductName: string,
+): CompetitorProposal | null {
+  const stem = domain.split(".")[0] ?? domain;
+  const row = briefingRows.find(
+    (candidate) => (candidate.domain.split(".")[0] ?? candidate.domain) === stem,
+  );
+  if (!row) {
+    return null;
+  }
+  const evidence: EvidenceRef[] = [
+    {
+      id: `ev:adoption-${row.id}-sources`,
+      kind: "source",
+      label: "4 sources",
+      count: 4,
+      objectId: `source:${row.domain}-crawl`,
+    },
+  ];
+  if (row.reviewCount !== undefined) {
+    evidence.push({
+      id: `ev:adoption-${row.id}-reviews`,
+      kind: "source",
+      label: countNoun(row.reviewCount, "review"),
+      count: row.reviewCount,
+      objectId: `source:${row.domain}-reviews`,
+    });
+  }
+  const proposal: CompetitorProposal = {
+    name: row.name,
+    domain: row.domain,
+    classification: row.classification === "ADJACENT" ? "ADJACENT" : "DIRECT",
+    suggestedThreat: row.threat,
+    summaryLine: `Found in your organisation’s context — already tracked for ${otherProductName}`,
+    summary: `${row.name} sells product analytics to product-led teams, led by self-serve onboarding and a deep free tier. The pricing page pushes annual plans hard, the changelog ships roughly weekly, and the positioning leans on being the “complete” data stack.`,
+    theyBeatYouOn: [],
+    youBeatThemOn: [],
+    evidence,
+    adoption: { otherProductNames: [otherProductName] },
+  };
+  if (row.sentiment !== undefined) {
+    proposal.sentiment = row.sentiment;
+  }
+  if (row.reviewCount !== undefined) {
+    proposal.reviewCount = row.reviewCount;
+  }
+  return proposal;
+}
+
 export function makeUnreachableFailure(domain: string): {
   domain: string;
   line: string;
@@ -1071,7 +1166,7 @@ export function objectFromProposal(
             id: `source:${proposal.domain}-reviews`,
             name: "G2",
             feeds: "review mining",
-            stamp: `${proposal.reviewCount} reviews · just now`,
+            stamp: `${countNoun(proposal.reviewCount, "review")} · just now`,
           },
         ]
       : []),

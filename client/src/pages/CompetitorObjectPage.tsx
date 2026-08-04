@@ -15,6 +15,8 @@ import { VerifiedStamp } from "@/components/competitors/VerifiedStamp";
 import { EmptyState } from "@/components/EmptyState";
 import { EvidenceRow } from "@/components/EvidenceChip";
 import { RichText } from "@/components/RichText";
+import { useProductHref } from "@/lib/productUrl";
+import { countNoun } from "@/lib/text";
 import { competitorSlug } from "@/mock/competitors";
 import { useAppActions, useAppState } from "@/state/AppStateContext";
 import type {
@@ -527,6 +529,7 @@ function CompetitorView({ competitor }: { competitor: CompetitorObject }) {
   const state = useAppState();
   const actions = useAppActions();
   const [, navigate] = useLocation();
+  const productHref = useProductHref();
   const [confirmingStop, setConfirmingStop] = useState(false);
 
   const row = state.competitorsOverview?.rows.find(
@@ -559,7 +562,7 @@ function CompetitorView({ competitor }: { competitor: CompetitorObject }) {
     metaSegments.push(`sentiment ${competitor.sentiment}`);
   }
   if (competitor.reviewCount !== undefined) {
-    metaSegments.push(`${competitor.reviewCount} reviews`);
+    metaSegments.push(countNoun(competitor.reviewCount, "review"));
   }
 
   return (
@@ -679,7 +682,7 @@ function CompetitorView({ competitor }: { competitor: CompetitorObject }) {
             onConfirm={() => {
               setConfirmingStop(false);
               actions.stopTracking(competitor.id);
-              navigate("/competitors");
+              navigate(productHref("/competitors"));
             }}
             onCancel={() => setConfirmingStop(false)}
           />

@@ -9,6 +9,7 @@ import type {
   DayOnePrompt,
   HomeBriefing,
   MockScenarioKey,
+  ProductRef,
 } from "./types";
 
 /**
@@ -120,10 +121,26 @@ const dayOnePrompt: DayOnePrompt = {
     "Roughly four minutes: help centre, releases and changelog get read, then I’ll propose competitors for you to keep or drop. Step 1 of 5.",
 };
 
+/** The single mock product every single-product scenario hangs off. */
+export const analyticsProduct: ProductRef = {
+  id: "analytics",
+  name: "Analytics Platform Pro",
+};
+
+/** Second product of the multi-product scenario (ADR 003 harness). */
+export const relayProduct: ProductRef = {
+  id: "relay",
+  name: "Relay Sync",
+};
+
+const dayOneProduct: ProductRef = { id: "discoveree", name: "Discoveree" };
+
 /** Populated base — the "briefing in a shell" mock. */
 function makePopulatedState(scenario: MockScenarioKey): AppState {
   return {
     productName: "Analytics Platform Pro",
+    products: [analyticsProduct],
+    productCreate: { pending: false, error: null },
     scenario: "briefing",
     mockScenario: scenario,
     modules: {
@@ -157,6 +174,8 @@ function makePopulatedState(scenario: MockScenarioKey): AppState {
 function makeDayOneState(scenario: MockScenarioKey): AppState {
   return {
     productName: "Discoveree",
+    products: [dayOneProduct],
+    productCreate: { pending: false, error: null },
     scenario: "day-one",
     mockScenario: scenario,
     modules: {
@@ -183,7 +202,26 @@ function makeDayOneState(scenario: MockScenarioKey): AppState {
   };
 }
 
-export function makeAppState(scenario: MockScenarioKey): AppState {
+/** Home for the multi-product scenario's second product — quiet, current. */
+const relayHome: HomeBriefing = {
+  kicker: "Your context, this morning",
+  lede: [
+    { text: "Everything is current. Nothing moved against " },
+    { text: "your two competitors", tone: "link", objectId: "module:competitors" },
+    { text: " this week." },
+  ],
+  items: [],
+  ideaPlaceholder: "Test a product idea, or ask about anything above…",
+  serving: {
+    consumers: [{ tool: "Claude", queriesThisWeek: 34 }],
+    teammatesReading: 1,
+  },
+};
+
+export function makeAppState(
+  scenario: MockScenarioKey,
+  activeProductId?: string,
+): AppState {
   if (scenario === "day-one") {
     return makeDayOneState(scenario);
   }
@@ -194,7 +232,16 @@ export function makeAppState(scenario: MockScenarioKey): AppState {
   }
 
   const state = makePopulatedState(scenario);
-  if (scenario === "many") {
+  if (scenario === "multi-product") {
+    // Two products; the dataset follows the product in the URL (ADR 003
+    // §1.2 — the active product is URL state, nothing else).
+    state.products = [analyticsProduct, relayProduct];
+    if (activeProductId === relayProduct.id) {
+      state.productName = relayProduct.name;
+      state.home = relayHome;
+      state.competitorsOverview = makeOverview("relay");
+    }
+  } else if (scenario === "many") {
     state.competitorsOverview = makeOverview("many");
   } else if (scenario === "quiet") {
     state.competitorsOverview = makeOverview("quiet");

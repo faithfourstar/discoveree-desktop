@@ -71,7 +71,8 @@ function Briefing({ home }: { home: HomeBriefing }) {
             <span className="font-mono tabular-nums">
               {home.serving.teammatesReading}
             </span>{" "}
-            teammates reading
+            {home.serving.teammatesReading === 1 ? "teammate" : "teammates"}{" "}
+            reading
           </span>
           <button
             type="button"

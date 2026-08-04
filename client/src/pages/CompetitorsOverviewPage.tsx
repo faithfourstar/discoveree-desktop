@@ -4,6 +4,7 @@ import { AddCompetitorFlow } from "@/components/competitors/AddCompetitorFlow";
 import { CompetitorRowCard } from "@/components/competitors/CompetitorRowCard";
 import { CompetitorsTable } from "@/components/competitors/CompetitorsTable";
 import { RichText } from "@/components/RichText";
+import { useProductHref } from "@/lib/productUrl";
 import { useAppActions, useAppState } from "@/state/AppStateContext";
 import type { CompetitorsOverview } from "@/mock/types";
 
@@ -45,6 +46,7 @@ function ViewToggle({
 }
 
 function SearchKeyNotice() {
+  const productHref = useProductHref();
   return (
     <div className="mb-6 flex items-center gap-4 rounded-[9px] border border-amber-500/20 bg-amber-500/5 px-4 py-3">
       <p className="flex-1 text-[13px] leading-[1.55] text-body">
@@ -52,7 +54,7 @@ function SearchKeyNotice() {
         news are paused. A Perplexity, OpenAI or Gemini key switches them on.
       </p>
       <Link
-        href="/settings"
+        href={productHref("/settings")}
         className="whitespace-nowrap rounded-[7px] border border-edge-btn bg-surface px-[13px] py-2 text-[12.5px] font-medium text-body transition-colors hover:border-edge-input"
       >
         Add a key
@@ -246,7 +248,8 @@ function DayOneCompetitors() {
             <span className="font-mono text-[0.88em] tabular-nums">
               {proposals.length}
             </span>{" "}
-            likely competitors. Keep the ones that matter.
+            likely {proposals.length === 1 ? "competitor" : "competitors"}.
+            Keep the ones that matter.
           </p>
           <div className="mb-5 rounded-[10px] border border-edge bg-surface px-5 py-2">
             {proposals.map((proposal) => (
@@ -277,7 +280,7 @@ function DayOneCompetitors() {
           >
             Track{" "}
             <span className="font-mono tabular-nums">{ticked.length}</span>{" "}
-            competitors
+            {ticked.length === 1 ? "competitor" : "competitors"}
           </button>
           <AddCompetitorFlow variant="day-one" />
         </div>

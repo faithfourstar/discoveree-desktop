@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useLocation } from "wouter";
 import {
   api,
   ApiError,
@@ -12,7 +13,13 @@ import {
   type ServerActiveRun,
   type ServerCompetitorCard,
   type ServerFeedChange,
+  type ServerProduct,
 } from "@/lib/api";
+import { parseProductId, productBase } from "@/lib/productUrl";
+import {
+  competitorsSeenChangesKey,
+  competitorsViewKey,
+} from "@/lib/storageKeys";
 import {
   buildLede,
   initialAddFlow,
@@ -33,22 +40,34 @@ import { AppStateBridge, type AppActions } from "./appStateCore";
  * served from the local desktop server (127.0.0.1:7317 behind the /api
  * proxy). Coarse pipeline states come from the server — nothing is
  * fabricated: staged rows reflect the runs the server actually reports.
+ *
+ * Product scoping (ADR 003 §1.2): the active product is URL state — every
+ * product-scoped fetch is keyed off it, per-product preferences (view,
+ * seen-change ids) are keyed by product id, and switching products swaps
+ * the dataset cleanly: in-flight responses for the product being left are
+ * dropped, never merged.
  */
 
-const VIEW_STORAGE_KEY = "discoveree.competitors.view";
-const SEEN_STORAGE_KEY = "discoveree.competitors.seenChanges";
 const POLL_MS = 3000;
 const OFFLINE_RETRY_MS = 8000;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-function storedView(): "cards" | "table" {
-  const stored = window.localStorage.getItem(VIEW_STORAGE_KEY);
+function storedView(productId: string | null): "cards" | "table" {
+  if (!productId) {
+    return "cards";
+  }
+  const stored = window.localStorage.getItem(competitorsViewKey(productId));
   return stored === "table" ? "table" : "cards";
 }
 
-function loadSeenChangeIds(): Set<string> {
+function loadSeenChangeIds(productId: string | null): Set<string> {
+  if (!productId) {
+    return new Set();
+  }
   try {
-    const raw = window.localStorage.getItem(SEEN_STORAGE_KEY);
+    const raw = window.localStorage.getItem(
+      competitorsSeenChangesKey(productId),
+    );
     const parsed: unknown = raw ? JSON.parse(raw) : null;
     return new Set(
       Array.isArray(parsed)
@@ -60,8 +79,17 @@ function loadSeenChangeIds(): Set<string> {
   }
 }
 
-function persistSeenChangeIds(ids: ReadonlySet<string>): void {
-  window.localStorage.setItem(SEEN_STORAGE_KEY, JSON.stringify([...ids]));
+function persistSeenChangeIds(
+  productId: string | null,
+  ids: ReadonlySet<string>,
+): void {
+  if (!productId) {
+    return;
+  }
+  window.localStorage.setItem(
+    competitorsSeenChangesKey(productId),
+    JSON.stringify([...ids]),
+  );
 }
 
 function nameFromDomain(domain: string): string {
@@ -72,6 +100,8 @@ function nameFromDomain(domain: string): string {
 function makeLiveBaseState(): AppState {
   return {
     productName: "Discoveree",
+    products: [],
+    productCreate: { pending: false, error: null },
     scenario: "briefing",
     mockScenario: "briefing",
     modules: {
@@ -134,13 +164,20 @@ const AGENT_STAGE_COPY: Record<string, { running: string; done: string }> = {
 };
 
 export function LiveAppStateProvider({ children }: { children: ReactNode }) {
+  const [location, navigate] = useLocation();
+  const activeProductId = parseProductId(location);
   const [state, setState] = useState<AppState>(makeLiveBaseState);
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  const activeProductIdRef = useRef<string | null>(activeProductId);
+  activeProductIdRef.current = activeProductId;
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+  const productsRef = useRef<ServerProduct[]>([]);
   const cardsRef = useRef<ServerCompetitorCard[]>([]);
   const feedRef = useRef<ServerFeedChange[]>([]);
-  const seenRef = useRef<Set<string>>(loadSeenChangeIds());
+  const seenRef = useRef<Set<string>>(loadSeenChangeIds(activeProductId));
   const pendingRunsRef = useRef<Map<string, PendingRun>>(new Map());
   const serverActiveRef = useRef<ServerActiveRun | null>(null);
   const proposalRunRef = useRef<ProposalRun | null>(null);
@@ -363,7 +400,9 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
               ? {
                   lede: composeLede(rows),
                   rows,
-                  view: prev.competitorsOverview?.view ?? storedView(),
+                  view:
+                    prev.competitorsOverview?.view ??
+                    storedView(activeProductIdRef.current),
                   checking,
                   searchKeyMissing: false,
                 }
@@ -416,11 +455,15 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
     };
 
     const refreshDetailIfLoaded = async (id: string) => {
-      if (!detailLoadedRef.current.has(id)) {
+      const productId = activeProductIdRef.current;
+      if (!productId || !detailLoadedRef.current.has(id)) {
         return;
       }
       try {
-        const detail = await api.getCompetitor(id);
+        const detail = await api.getCompetitor(productId, id);
+        if (activeProductIdRef.current !== productId) {
+          return; // Switched away — never merge across products.
+        }
         const row = composeRows().find((r) => r.id === id);
         if (!row) {
           return;
@@ -436,11 +479,18 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
     };
 
     const pollOnce = async () => {
+      const productId = activeProductIdRef.current;
+      if (!productId) {
+        return;
+      }
       try {
         const [listRes, activeRes] = await Promise.all([
-          api.listCompetitors(),
-          api.getActiveRun(),
+          api.listCompetitors(productId),
+          api.getActiveRun(productId),
         ]);
+        if (activeProductIdRef.current !== productId) {
+          return; // Switched away mid-poll — drop the stale product's data.
+        }
         cardsRef.current = listRes.competitors;
         serverActiveRef.current = activeRes;
         offlineRef.current = false;
@@ -461,7 +511,10 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
             card.enrichmentStatus === "enriching";
           if (!stillActive && !stillEnriching) {
             pendingRunsRef.current.delete(id);
-            const changesRes = await api.listChanges(50);
+            const changesRes = await api.listChanges(productId, 50);
+            if (activeProductIdRef.current !== productId) {
+              return;
+            }
             feedRef.current = changesRes.changes;
             const newest = newestChangeFor(card.name);
             const changed =
@@ -484,7 +537,10 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         const proposalRun = proposalRunRef.current;
         if (proposalRun && !proposalRun.settled) {
           try {
-            const detail = await api.getCompetitor(proposalRun.id);
+            const detail = await api.getCompetitor(productId, proposalRun.id);
+            if (activeProductIdRef.current !== productId) {
+              return;
+            }
             const stillActive =
               activeRes.active &&
               (activeRes.competitorId === proposalRun.id ||
@@ -558,21 +614,42 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
     };
 
     const loadAll = async () => {
+      const productId = activeProductIdRef.current;
       try {
-        const [productRes, listRes, changesRes, activeRes] = await Promise.all([
-          api.getProduct(),
-          api.listCompetitors(),
-          api.listChanges(50),
-          api.getActiveRun(),
-        ]);
+        // Org first: the product list drives the switcher and validates the
+        // URL's product before anything product-scoped is fetched.
+        const productsRes = await api.listProducts();
+        productsRef.current = productsRes.products;
         offlineRef.current = false;
+        const active = productId
+          ? productsRes.products.find((product) => product.id === productId)
+          : undefined;
+        setState((prev) => ({
+          ...prev,
+          products: productsRes.products.map((product) => ({
+            id: product.id,
+            name: product.name,
+          })),
+          productName:
+            active?.name ?? productsRes.products[0]?.name ?? "Discoveree",
+        }));
+        if (!active) {
+          // No (valid) product in the URL — the URL guard redirects into
+          // the first product; nothing product-scoped to load yet.
+          recompose();
+          return;
+        }
+        const [listRes, changesRes, activeRes] = await Promise.all([
+          api.listCompetitors(active.id),
+          api.listChanges(active.id, 50),
+          api.getActiveRun(active.id),
+        ]);
+        if (activeProductIdRef.current !== active.id) {
+          return; // Switched away mid-load.
+        }
         cardsRef.current = listRes.competitors;
         feedRef.current = changesRes.changes;
         serverActiveRef.current = activeRes;
-        setState((prev) => ({
-          ...prev,
-          productName: productRes.product?.name ?? "Discoveree",
-        }));
         recompose();
         if (shouldPoll()) {
           ensurePolling();
@@ -587,6 +664,42 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
           void loadAll();
         }, OFFLINE_RETRY_MS);
       }
+    };
+
+    /**
+     * Product switch (URL changed): drop everything belonging to the
+     * previous product — refs, per-product preferences, add-flow state —
+     * and load the new product's dataset. No cross-product bleed.
+     */
+    const switchProduct = (productId: string | null) => {
+      stopPolling();
+      if (retryTimerRef.current !== null) {
+        window.clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+      pendingRunsRef.current.clear();
+      proposalRunRef.current = null;
+      serverActiveRef.current = null;
+      cardsRef.current = [];
+      feedRef.current = [];
+      quietSuffixRef.current.clear();
+      detailLoadedRef.current.clear();
+      seenRef.current = loadSeenChangeIds(productId);
+      setState((prev) => ({
+        ...prev,
+        productName:
+          productsRef.current.find((product) => product.id === productId)
+            ?.name ?? prev.productName,
+        competitorsOverview: null,
+        competitors: {},
+        competitorAddFlow: { ...initialAddFlow },
+        justVerifiedId: null,
+        modules: {
+          ...prev.modules,
+          competitors: { ...prev.modules.competitors, populated: false },
+        },
+      }));
+      void loadAll();
     };
 
     // ── Shared action helpers ─────────────────────────────────────────────
@@ -607,6 +720,10 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
       name: string;
       url?: string;
     }): Promise<void> => {
+      const productId = activeProductIdRef.current;
+      if (!productId) {
+        return;
+      }
       setState((prev) => ({
         ...prev,
         competitorAddFlow: {
@@ -621,10 +738,56 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
       try {
         // Creates a PROPOSED row: it never touches the overview list, lede
         // or counts until "Track <name>" calls /accept (spec 2.4).
-        const { competitor } = await api.createCompetitor({
+        const { competitor } = await api.createCompetitor(productId, {
           ...body,
           classification: "DIRECT",
         });
+        if (activeProductIdRef.current !== productId) {
+          return;
+        }
+        const adoptedFrom = (competitor.alsoTrackedBy ?? []).filter(
+          (product) => product.productId !== productId,
+        );
+        if (adoptedFrom.length > 0) {
+          // Adoption (ADR 003 §2.3): the entity already exists in the org —
+          // the proposal card renders its existing profile instantly;
+          // nothing is re-researched, only facet agents run.
+          proposalRunRef.current = {
+            id: competitor.id,
+            name: competitor.name,
+            seenLabels: [],
+            settled: true,
+          };
+          try {
+            const detail = await api.getCompetitor(productId, competitor.id);
+            if (activeProductIdRef.current !== productId) {
+              return;
+            }
+            const proposal = proposalFromDetail({
+              ...detail.competitor,
+              alsoTrackedBy: detail.competitor.alsoTrackedBy ?? adoptedFrom,
+            });
+            setState((prev) => ({
+              ...prev,
+              competitorAddFlow: {
+                ...prev.competitorAddFlow,
+                orphan: undefined,
+                phase: "proposal",
+                stages: [],
+                proposal,
+              },
+            }));
+          } catch {
+            // Detail fetch hiccup — fall back to the polling path; the
+            // card arrives when the poll settles the proposed row.
+            if (proposalRunRef.current?.id === competitor.id) {
+              proposalRunRef.current.settled = false;
+            }
+            recompose();
+            ensurePolling();
+          }
+          return;
+        }
         proposalRunRef.current = {
           id: competitor.id,
           name: competitor.name,
@@ -681,7 +844,10 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
 
     const live: AppActions = {
       setCompetitorsView: (view) => {
-        window.localStorage.setItem(VIEW_STORAGE_KEY, view);
+        const productId = activeProductIdRef.current;
+        if (productId) {
+          window.localStorage.setItem(competitorsViewKey(productId), view);
+        }
         setState((prev) =>
           prev.competitorsOverview
             ? {
@@ -699,12 +865,13 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         live.setCompetitorsView(view);
       },
       checkCompetitor: (id) => {
-        if (pendingRunsRef.current.has(id)) {
+        const productId = activeProductIdRef.current;
+        if (!productId || pendingRunsRef.current.has(id)) {
           return;
         }
         void (async () => {
           try {
-            await api.refreshCompetitor(id);
+            await api.refreshCompetitor(productId, id);
             registerPendingRun(id, Date.now());
           } catch (error) {
             if (error instanceof ApiError && error.status === 409) {
@@ -741,14 +908,21 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
           }
         }
         if (added) {
-          persistSeenChangeIds(seenRef.current);
+          persistSeenChangeIds(activeProductIdRef.current, seenRef.current);
           recompose();
         }
       },
       ensureCompetitorDetail: (id) => {
+        const productId = activeProductIdRef.current;
+        if (!productId) {
+          return;
+        }
         void (async () => {
           try {
-            const detail = await api.getCompetitor(id);
+            const detail = await api.getCompetitor(productId, id);
+            if (activeProductIdRef.current !== productId) {
+              return;
+            }
             cardsRef.current = [
               ...cardsRef.current.filter((c) => c.id !== id),
               detail.competitor,
@@ -773,9 +947,13 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         })();
       },
       setCompetitorClassification: (id, value) => {
+        const productId = activeProductIdRef.current;
+        if (!productId) {
+          return;
+        }
         void (async () => {
           try {
-            const { competitor } = await api.patchCompetitor(id, {
+            const { competitor } = await api.patchCompetitor(productId, id, {
               classification: value,
             });
             cardsRef.current = cardsRef.current.map((c) =>
@@ -789,9 +967,13 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         })();
       },
       setCompetitorThreat: (id, value) => {
+        const productId = activeProductIdRef.current;
+        if (!productId) {
+          return;
+        }
         void (async () => {
           try {
-            const { competitor } = await api.patchCompetitor(id, {
+            const { competitor } = await api.patchCompetitor(productId, id, {
               threatLevel: threatToServer(value),
             });
             cardsRef.current = cardsRef.current.map((c) =>
@@ -805,9 +987,13 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         })();
       },
       stopTracking: (id) => {
+        const productId = activeProductIdRef.current;
+        if (!productId) {
+          return;
+        }
         void (async () => {
           try {
-            await api.deleteCompetitor(id);
+            await api.deleteCompetitor(productId, id);
             cardsRef.current = cardsRef.current.filter((c) => c.id !== id);
             pendingRunsRef.current.delete(id);
             detailLoadedRef.current.delete(id);
@@ -824,10 +1010,17 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         }));
         // Surface an orphaned proposed row from a previous session rather
         // than letting it linger silently (fetch ?include=proposed).
-        if (!proposalRunRef.current) {
+        const productId = activeProductIdRef.current;
+        if (productId && !proposalRunRef.current) {
           void (async () => {
             try {
-              const { competitors } = await api.listCompetitors(true);
+              const { competitors } = await api.listCompetitors(
+                productId,
+                true,
+              );
+              if (activeProductIdRef.current !== productId) {
+                return;
+              }
               const proposed = competitors.find(
                 (card) => card.status === "proposed",
               );
@@ -866,8 +1059,9 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
       },
       researchCompetitor: startResearch,
       retryResearch: () => {
+        const productId = activeProductIdRef.current;
         const run = proposalRunRef.current;
-        if (run) {
+        if (run && productId) {
           // Re-run enrichment on the existing proposed row (spec 5.1).
           run.settled = false;
           run.seenLabels = [];
@@ -888,7 +1082,7 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
               },
             };
           });
-          void api.refreshCompetitor(run.id).catch(() => {
+          void api.refreshCompetitor(productId, run.id).catch(() => {
             // A 409 means a run is already going — the poll picks it up.
           });
           ensurePolling();
@@ -958,10 +1152,11 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
       // Persist the rename when the inline edit commits (blur/Enter) —
       // valid only while the row is proposed; revert quietly on failure.
       commitProposalName: () => {
+        const productId = activeProductIdRef.current;
         const proposal = stateRef.current.competitorAddFlow.proposal;
         const run = proposalRunRef.current;
         const id = proposal?.id;
-        if (!proposal || !id) {
+        if (!proposal || !id || !productId) {
           return;
         }
         const persisted = run?.name ?? proposal.name;
@@ -988,7 +1183,7 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         }
         void (async () => {
           try {
-            const { competitor } = await api.patchCompetitor(id, {
+            const { competitor } = await api.patchCompetitor(productId, id, {
               name: requested,
             });
             if (proposalRunRef.current?.id === id) {
@@ -1034,15 +1229,16 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         })();
       },
       toggleProposalClassification: () => {
+        const productId = activeProductIdRef.current;
         const proposal = stateRef.current.competitorAddFlow.proposal;
         const id = proposal?.id;
-        if (!proposal || !id) {
+        if (!proposal || !id || !productId) {
           return;
         }
         const next = proposal.classification === "DIRECT" ? "ADJACENT" : "DIRECT";
         void (async () => {
           try {
-            const { competitor } = await api.patchCompetitor(id, {
+            const { competitor } = await api.patchCompetitor(productId, id, {
               classification: next,
             });
             setState((prev) =>
@@ -1065,23 +1261,27 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         })();
       },
       acceptProposal: () => {
+        const productId = activeProductIdRef.current;
         const id =
           proposalRunRef.current?.id ??
           stateRef.current.competitorAddFlow.proposal?.id;
-        if (!id) {
+        if (!id || !productId) {
           return;
         }
         void (async () => {
           try {
             // The human accept is real: only now does the row materialise.
-            const { competitor } = await api.acceptCompetitor(id);
+            const { competitor } = await api.acceptCompetitor(productId, id);
+            if (activeProductIdRef.current !== productId) {
+              return;
+            }
             proposalRunRef.current = null;
             cardsRef.current = [
               ...cardsRef.current.filter((c) => c.id !== competitor.id),
               competitor,
             ];
             try {
-              const changesRes = await api.listChanges(50);
+              const changesRes = await api.listChanges(productId, 50);
               feedRef.current = changesRes.changes;
             } catch {
               // The feed catches up on the next poll.
@@ -1109,6 +1309,7 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         })();
       },
       discardProposal: () => {
+        const productId = activeProductIdRef.current;
         const flow = stateRef.current.competitorAddFlow;
         const id =
           proposalRunRef.current?.id ?? flow.proposal?.id ?? flow.orphan?.id;
@@ -1117,9 +1318,9 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
           ...prev,
           competitorAddFlow: { ...initialAddFlow, open: true },
         }));
-        if (id) {
+        if (id && productId) {
           // Discarding a proposed row deletes it entirely.
-          void api.deleteCompetitor(id).catch(() => {
+          void api.deleteCompetitor(productId, id).catch(() => {
             // Already gone, or unreachable — either way it is not tracked.
           });
         }
@@ -1154,17 +1355,72 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         void pollOnce();
       },
       trackOnboardingProposals: () => undefined,
+      createProduct: ({ url }) => {
+        const domain = normaliseDomain(url);
+        if (!domain) {
+          setState((prev) => ({
+            ...prev,
+            productCreate: {
+              pending: false,
+              error:
+                "That doesn’t look like a web address — try something like acme.com.",
+            },
+          }));
+          return;
+        }
+        setState((prev) => ({
+          ...prev,
+          productCreate: { pending: true, error: null },
+        }));
+        void (async () => {
+          try {
+            const { product } = await api.createProduct({
+              name: nameFromDomain(domain),
+              url: `https://${domain}`,
+            });
+            productsRef.current = [
+              ...productsRef.current.filter((p) => p.id !== product.id),
+              product,
+            ];
+            setState((prev) => ({
+              ...prev,
+              products: productsRef.current.map((p) => ({
+                id: p.id,
+                name: p.name,
+              })),
+              productCreate: { pending: false, error: null },
+            }));
+            navigateRef.current(productBase(product.id));
+          } catch (error) {
+            const message =
+              error instanceof ApiError
+                ? error.message
+                : "We couldn’t reach the local server — is the Discoveree backend running?";
+            setState((prev) => ({
+              ...prev,
+              productCreate: { pending: false, error: message },
+            }));
+          }
+        })();
+      },
     };
 
-    return Object.assign(live, { __loadAll: loadAll });
+    return Object.assign(live, { __switchProduct: switchProduct });
   }, []);
 
-  // Initial load + cleanup.
+  // The active product is URL state (ADR 003 §1.2): load on mount and
+  // reload — dropping the previous product's dataset — whenever it changes.
+  useEffect(() => {
+    (
+      actions as AppActions & {
+        __switchProduct: (productId: string | null) => void;
+      }
+    ).__switchProduct(activeProductId);
+  }, [actions, activeProductId]);
+
+  // Cleanup on unmount.
   useEffect(() => {
     mountedRef.current = true;
-    void (
-      actions as AppActions & { __loadAll: () => Promise<void> }
-    ).__loadAll();
     return () => {
       mountedRef.current = false;
       if (pollTimerRef.current !== null) {
@@ -1180,7 +1436,7 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         window.clearTimeout(tintTimerRef.current);
       }
     };
-  }, [actions]);
+  }, []);
 
   return (
     <AppStateBridge state={state} actions={actions}>

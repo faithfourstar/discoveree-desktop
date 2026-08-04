@@ -43,6 +43,13 @@ export interface AppActions {
   /** Live mode: resume an orphaned proposed row surfaced on flow open. */
   resumeProposal(): void;
   trackOnboardingProposals(ids: readonly string[]): void;
+  // Products (ADR 003)
+  /**
+   * "Add another product" — day-one-style URL prompt. Creates the product
+   * and navigates into it; progress and errors surface via
+   * `state.productCreate`.
+   */
+  createProduct(input: { url: string }): void;
 }
 
 const noop = () => undefined;
@@ -72,6 +79,7 @@ export const defaultActions: AppActions = {
   discardProposal: noop,
   resumeProposal: noop,
   trackOnboardingProposals: noop,
+  createProduct: noop,
 };
 
 const AppStateContext = createContext<AppState>(briefingState);

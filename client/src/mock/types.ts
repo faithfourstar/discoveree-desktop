@@ -29,6 +29,22 @@ export interface ModuleState {
 }
 
 // ---------------------------------------------------------------------------
+// Products — the org's own products (ADR 003 §1.2: multi-product shell)
+// ---------------------------------------------------------------------------
+
+/** One of the organisation's products, as the shell needs it. */
+export interface ProductRef {
+  id: string;
+  name: string;
+}
+
+/** The "add another product" prompt's transient submit state. */
+export interface ProductCreateState {
+  pending: boolean;
+  error: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // Rich text — prose with inline object links and staleness highlights
 // ---------------------------------------------------------------------------
 
@@ -228,6 +244,16 @@ export interface CompetitorProposal {
    * (live mode), e.g. "You’re already tracking a competitor called Amplitude."
    */
   nameError?: string;
+  /**
+   * ADR 003 §2.3/§2.9: the entity already exists in the organisation —
+   * another product tracks it — so this proposal is an adoption: the
+   * profile renders instantly from the shared entity, nothing is
+   * re-researched, and the card says so.
+   */
+  adoption?: {
+    /** Names of the other products already tracking this entity. */
+    otherProductNames: readonly string[];
+  };
 }
 
 export interface AddFlowFailure {
@@ -429,10 +455,19 @@ export type MockScenarioKey =
   | "quiet"
   | "checking"
   | "no-search-key"
-  | "no-llm-key";
+  | "no-llm-key"
+  | "multi-product";
 
 export interface AppState {
   productName: string;
+  /**
+   * The organisation's products. The top-bar switcher renders only when
+   * there is more than one — single-product stays the common case and its
+   * chrome is untouched.
+   */
+  products: readonly ProductRef[];
+  /** Submit state of the "add another product" prompt. */
+  productCreate: ProductCreateState;
   scenario: Scenario;
   /** Which mock dataset produced this state (dev affordance only). */
   mockScenario: MockScenarioKey;
