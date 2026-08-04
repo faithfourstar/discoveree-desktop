@@ -91,6 +91,17 @@ The most-valued feedback feature: judging whether the team is working on the mos
 - **Act:** accepted suggestions are created in the customer's planning tool via outbound sync.
 - **Hard rules:** every suggestion is **evidence-cited** (shows the feedback items / pillar / competitor move behind it) and **human-accepted** — the agent never writes to Jira on its own. New build required: the evaluative agent + weekly report; ingestion and outbound plumbing exist.
 
+## 4-loop. The ship→hear→iterate loop (decided 4 Aug 2026)
+
+Feedback has a lifecycle relative to product change, keyed on **source dates** (when feedback was said — the 3b date discipline is the foundation):
+
+1. **Ageing:** themes decay via the computed lifecycle (forming/established/fading) — old feedback sinks without being deleted. (Live in 3b.)
+2. **Addressed:** when a release/roadmap item ships against a theme, the theme gains an "addressed by <release, date>" state — deprioritised in the overview and in roadmap-review scoring. **Regression rule:** mentions with sourceCreatedAt AFTER the fix date re-escalate the theme (post-fix complaints are a regression signal, not history). Requires the sprint-4 own-product release/changelog pipelines + roadmap items; linkage is human-confirmed or agent-proposed through the accept queue.
+3. **Release response:** feedback dated after a release and matched to the shipped capability is highlighted ("heard since the v2.4 export release") — the briefing can report early response with sentiment.
+4. **Iteration suggestions:** the Suggest engine (roadmap sprint) gains an "iteration" suggestion type whose evidence is post-release feedback on the shipped thing — "you shipped X; the customers using it ask for Y." Evidence-cited, human-accepted, as always.
+
+Sequencing: (1) ships with 3b; (2)–(3) need sprint 4's release data and land with or after it; (4) belongs to Roadmap Review & Suggestions.
+
 ## 4a. Internal evidence — uploads and MCP-proposed intel (decided 3 Aug 2026)
 
 Enterprise and niche products often have little public review/competitor data; their richest intel is internal (market research decks, sales-call notes, customer conversations). Two ingestion paths are therefore first-class roadmap items, both reusing the proposal→accept primitive from the competitor gate:
