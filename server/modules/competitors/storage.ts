@@ -176,6 +176,65 @@ export async function deleteCompetitorEntitiesByIds(ids: string[]): Promise<void
   await db.delete(competitorEntities).where(inArray(competitorEntities.id, ids));
 }
 
+/**
+ * Demote a node to an IDENTITY-ONLY row (ADR 003 §2.3 step 4 / §2.9.3 ruling,
+ * 4 Aug 2026): when a child's last facet is discarded while the tree survives,
+ * the node is kept — the org's knowledge of the competitor's portfolio shape
+ * must not regress on a tracking decision — but every enriched column is
+ * cleared. What survives is exactly the identity/matching set: name,
+ * normalizedName, parentEntityId, url/urlSource, domain, parentCompany.
+ * The demoted node joins the identity-only siblings and is GC'd only with the
+ * whole tree.
+ */
+export async function demoteCompetitorEntityToIdentity(id: string): Promise<CompetitorEntity> {
+  const db = getDb();
+  const [entity] = await db
+    .update(competitorEntities)
+    .set({
+      description: null,
+      descriptionSourceUrl: null,
+      summaryCitations: null,
+      keyFeatures: null,
+      markets: null,
+      customerSegments: null,
+      integrations: null,
+      pricing: null,
+      pricingSourceUrl: null,
+      pricingTiers: null,
+      pricingFreeTrial: null,
+      pricingNotes: null,
+      reviews: null,
+      reviewPlatforms: null,
+      reviewPositiveThemes: null,
+      reviewNegativeThemes: null,
+      reviewAverageRating: null,
+      reviewTotalCount: null,
+      helpCenterUrl: null,
+      helpCenterUrlSourceUrl: null,
+      changelogUrl: null,
+      changelogUrlSourceUrl: null,
+      changelogContentHash: null,
+      changelogLastCheckedAt: null,
+      githubRepoUrl: null,
+      githubStats: null,
+      validReleaseSources: null,
+      announcements: null,
+      announcementsAnalysis: null,
+      investorRelations: null,
+      enrichmentStatus: "pending",
+      lastEnrichedAt: null,
+      userNews: null,
+      userPricing: null,
+      userFeatures: null,
+      userIntegrations: null,
+      userReviews: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(competitorEntities.id, id))
+    .returning();
+  return entity!;
+}
+
 /** Rename an entity node (ADR 003 §2.4: change rows are FK'd — nothing to walk). */
 export async function renameCompetitorEntity(
   id: string,

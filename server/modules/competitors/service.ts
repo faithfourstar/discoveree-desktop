@@ -220,15 +220,21 @@ export async function addCompetitor(
 // ── Discard / delete + entity lifecycle GC (ADR 003 §2.3 steps 4–5) ─────────
 
 /**
- * Delete a facet and garbage-collect the entity tree it pointed into:
- * - No facet left anywhere on the tree → the whole tree (root + children)
- *   and every change row observed on it are deleted. For a discarded
- *   proposal this preserves §9's "a proposal that was never accepted leaves
- *   no history"; for the last tracked facet it matches the sprint-2
- *   delete semantics at entity grain.
- * - Facets remain elsewhere on the tree → only a now-unfaceted CHILD node is
- *   collected (with its change rows); another product's tracked context is
- *   never collateral damage.
+ * Delete a facet and garbage-collect the entity tree it pointed into
+ * (ADR 003 §2.3 steps 4–5, incl. the 4 Aug 2026 demote-not-delete ruling):
+ * - No facet left anywhere on the tree → the whole tree (root + children,
+ *   including identity-only siblings) and every change row observed on it are
+ *   deleted. For a discarded proposal this preserves §9's "a proposal that
+ *   was never accepted leaves no history"; for the last tracked facet it
+ *   matches the sprint-2 delete semantics at entity grain.
+ * - Facets remain elsewhere on the tree → the tree stays. The discarded
+ *   node's draft change rows are purged; roots always survive; a now-unfaceted
+ *   CHILD is DEMOTED to an identity-only row (enrichment cleared, name/url/
+ *   parentEntityId kept) rather than deleted — the org's knowledge of the
+ *   competitor's portfolio shape must not regress on a tracking decision. The
+ *   demoted child joins the identity-only siblings, kept for matching, GC'd
+ *   only with the whole tree. Another product's tracked context is never
+ *   collateral damage.
  * Threat-level history goes with the facet in every path (it is facet data).
  */
 export async function deleteFacetWithGc(profile: CompetitorProfile): Promise<void> {
@@ -253,13 +259,13 @@ export async function deleteFacetWithGc(profile: CompetitorProfile): Promise<voi
     return;
   }
 
-  // Tree still carries context. A now-unfaceted CHILD node is collected;
-  // roots survive while any facet exists on their tree.
+  // Tree still carries context. Roots survive untouched; a now-unfaceted
+  // CHILD is demoted to an identity-only row and its change rows are purged.
   if (node.parentEntityId) {
     const facetsOnNode = await storage.countFacetsForEntities([node.id]);
     if (facetsOnNode === 0) {
       await storage.deleteCompetitorChangesByEntities([node.id]);
-      await storage.deleteCompetitorEntitiesByIds([node.id]);
+      await storage.demoteCompetitorEntityToIdentity(node.id);
     }
   }
 }
@@ -398,13 +404,34 @@ async function applySummaryResult(
   }
 }
 
-/** Save validated features onto the ENTITY node, merged by feature name. */
+/**
+ * Save validated features onto the ENTITY node, merged by feature name, and
+ * apply the baseline-vs-diff rule (brief §10a.2 — "detecting change, not
+ * re-deriving"; live-user ruling 4 Aug 2026):
+ *
+ * - FIRST successful observation (no prior feature baseline on the entity):
+ *   store the inventory SILENTLY. The baseline is not a change — the Key
+ *   Features section is its home; a change row would duplicate it.
+ * - Subsequent scans: diff against the stored baseline and record only the
+ *   ADDITIONS as one evidence-cited change row. Removals and modifications
+ *   are deliberately NOT recorded: the merge never deletes (a sampled web
+ *   scan cannot distinguish "removed" from "not sampled this run"), and
+ *   description text is LLM-paraphrased every run, so "modified" would be
+ *   pure noise. ("Newly released" vs "newly observed" semantics are deferred
+ *   to the reviews sprint per the coordinator's note.)
+ */
 async function applyFeaturesResult(
-  entityId: string,
+  entity: CompetitorEntity,
   fr: CompetitorFeaturesResult,
-): Promise<void> {
-  const cachedEntity = await storage.getCompetitorEntityById(entityId);
+  sourceCategory: string,
+): Promise<{ isFirstObservation: boolean; newFeatureNames: string[] }> {
+  const cachedEntity = await storage.getCompetitorEntityById(entity.id);
   const existing = (cachedEntity?.keyFeatures as Array<{ feature?: string; description?: string; sourceUrl?: string | null }> | null) || [];
+  const isFirstObservation = existing.filter(f => f.feature).length === 0;
+  const priorNames = new Set(
+    existing.map(f => (f.feature || "").toLowerCase().trim()).filter(Boolean),
+  );
+
   const byName = new Map<string, { feature: string; description?: string; sourceUrl?: string | null }>();
   for (const f of existing) {
     if (f.feature) byName.set(f.feature.toLowerCase().trim(), { feature: f.feature, description: f.description, sourceUrl: f.sourceUrl ?? null });
@@ -419,7 +446,24 @@ async function applyFeaturesResult(
     });
   }
 
-  await storage.mergeCompetitorEntityFacts(entityId, { keyFeatures: [...byName.values()] });
+  await storage.mergeCompetitorEntityFacts(entity.id, { keyFeatures: [...byName.values()] });
+
+  const newFeatures = fr.features.filter(f => !priorNames.has(f.name.toLowerCase().trim()));
+  const newFeatureNames = newFeatures.map(f => f.name);
+
+  if (!isFirstObservation && newFeatures.length > 0) {
+    await storage.createCompetitorChange({
+      entityId: entity.id,
+      sourceCategory,
+      changeType: "feature",
+      changeTitle: `${entity.name}: ${newFeatures.length} new feature${newFeatures.length === 1 ? "" : "s"} observed`,
+      changeDescription: newFeatureNames.slice(0, 5).join(", "),
+      sourceUrl: newFeatures[0]?.documentationUrl || entity.url || "",
+      sourceType: "agent",
+    });
+  }
+
+  return { isFirstObservation, newFeatureNames };
 }
 
 export interface EnrichmentOptions {
@@ -508,19 +552,10 @@ export async function enrichCompetitor(
             product.id,
           );
           if (fr && fr.features.length > 0) {
-            await applyFeaturesResult(entity.id, fr);
-
-            // Record the discovery in the change feed (evidence-cited),
-            // keyed to the ENTITY node (§2.4).
-            await storage.createCompetitorChange({
-              entityId: entity.id,
-              sourceCategory,
-              changeType: "feature",
-              changeTitle: `${entity.name}: ${fr.features.length} key features identified`,
-              changeDescription: fr.features.slice(0, 3).map(f => f.name).join(", "),
-              sourceUrl: fr.features[0]?.documentationUrl || entity.url || "",
-              sourceType: "agent",
-            });
+            // Baseline-vs-diff rule lives in applyFeaturesResult: the first
+            // observation stores the inventory silently; later scans record
+            // only additions as change rows (§10a.2 ruling).
+            await applyFeaturesResult(entity, fr, sourceCategory);
             anySucceeded = true;
           }
           return fr;
@@ -588,6 +623,18 @@ export async function refreshCompetitor(
 const RELEASE_SOURCE_CACHE_TTL_DAYS = 7;
 
 /**
+ * The classification an entity-scoped scan records on its change rows: the
+ * observing context. "competitor" wins when any facing product classifies the
+ * node as a direct competitor; otherwise the first facet's category.
+ */
+function dominantSourceCategory(facets: CompetitorProfile[]): "competitor" | "adjacent" {
+  const relevant = facets.filter(f => f.sourceCategory !== "own_product");
+  return relevant.some(f => f.sourceCategory === "competitor")
+    ? "competitor"
+    : (relevant[0]?.sourceCategory === "adjacent" ? "adjacent" : "competitor");
+}
+
+/**
  * Dual-stream market/product signal scan for ONE entity node, writing new
  * entity-keyed `competitor_changes` rows (dedup by title + sourceUrl).
  * Release-source URLs are probed once and cached on the entity for 7 days.
@@ -604,9 +651,7 @@ export async function runUpdatesScanForEntity(
 
   const facets = await storage.getCompetitorProfilesByEntity(entity.id);
   const relevantFacets = facets.filter(f => f.sourceCategory !== "own_product");
-  const sourceCategory = relevantFacets.some(f => f.sourceCategory === "competitor")
-    ? "competitor"
-    : (relevantFacets[0]?.sourceCategory === "adjacent" ? "adjacent" : "competitor");
+  const sourceCategory = dominantSourceCategory(facets);
 
   // Prompt context: "competitors of X". Prefer the caller's product; fall
   // back to the first faceted product's name.
@@ -668,7 +713,32 @@ export async function runUpdatesScanForEntity(
   // Dedupe key: title + source URL — seeded from stored changes AND updated
   // within this batch ("no silent duplicates" is the pitch).
   const seen = new Set(existingChanges.map(c => `${c.changeTitle}::${c.sourceUrl ?? ""}`));
+
+  // Post-tracking clamp (§10a honesty ruling, 4 Aug 2026): the scan looks
+  // back 180 days, so the FIRST run would otherwise backfill months of
+  // historic changelog/news entries as freshly "detected" changes. The feed
+  // records what changed while we were watching: only items whose published
+  // date falls on or after the day the entity began being tracked
+  // (createdAt, day-granular to be fair to date-only changelog stamps) are
+  // written. Items whose date cannot be parsed are dropped too — we cannot
+  // establish they are post-tracking. This applies to every scan, not just
+  // the first: the dedupe set makes re-scans a non-issue, and a pre-tracking
+  // date is historic context regardless of when we happen to observe it.
+  // UTC day-start: date-only changelog stamps ("2026-07-15") parse as UTC
+  // midnight, so the clamp boundary must be UTC-day-granular too.
+  const createdAt = entity.createdAt ? new Date(entity.createdAt) : null;
+  const trackingStart = createdAt
+    ? new Date(Date.UTC(createdAt.getUTCFullYear(), createdAt.getUTCMonth(), createdAt.getUTCDate()))
+    : null;
+
   for (const update of result.updates) {
+    if (trackingStart) {
+      const published = update.publishedDate ? new Date(update.publishedDate) : null;
+      if (!published || Number.isNaN(published.getTime()) || published < trackingStart) {
+        console.log(`[Competitors] Skipped pre-tracking item for ${entity.name}: "${update.changeTitle}" (published ${update.publishedDate ?? "unknown"}, tracking since ${trackingStart.toISOString().slice(0, 10)})`);
+        continue;
+      }
+    }
     const key = `${update.changeTitle}::${update.sourceUrl}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -693,7 +763,9 @@ export async function runUpdatesScanForEntity(
 /**
  * Scheduled features refresh for ONE entity node (entity research — features
  * are entity facts, §2.2). Throws on failure so trackAgentExecution records a
- * failed run and the circuit breaker can fire.
+ * failed run and the circuit breaker can fire. The baseline-vs-diff rule
+ * (first observation silent, later scans record additions as change rows)
+ * lives in applyFeaturesResult, shared with the add-flow enrichment.
  */
 export async function runFeaturesScanForEntity(
   organizationId: string,
@@ -718,7 +790,8 @@ export async function runFeaturesScanForEntity(
   ]);
 
   if (result && result.features && result.features.length > 0) {
-    await applyFeaturesResult(entity.id, result);
+    const facets = await storage.getCompetitorProfilesByEntity(entity.id);
+    await applyFeaturesResult(entity, result, dominantSourceCategory(facets));
     return { processed: true };
   }
   return { processed: false };
