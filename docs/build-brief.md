@@ -108,6 +108,7 @@ Design notes:
 - **Sensitivity (open design question):** this is the most confidential context in the product. Local-first is a genuine advantage here, but MCP serving and free reader seats likely need per-module visibility controls (e.g. commercial context excluded from the reader surface by default). Must be answered in the module's design doc.
 - **Onboarding:** gates via a sixth step-2 job (e.g. "Keep our commercial model sharp"); same rule as all modules — unchosen, it doesn't appear.
 - Cross-links: segment definitions shared with Customer Insights (one segment vocabulary, not two).
+- **Goals ownership (decided 4 Aug 2026):** *setting* goals — the targets: expected revenue, growth, costs, per product and portfolio — belongs to the Commercial Model; *applying* them belongs to Growth Strategy, which covers both what the targets are (by reference, not copy) and the hypothesis of what we must do to reach them (pillars/bets linked to the goals they serve). The roadmap review then scores initiatives → pillars → goals. When Strategy is ported, its goals sections build on Commercial Model goal objects rather than owning their own.
 
 ## 4c. Multi-product organisations (requirement recorded 4 Aug 2026; design in ADR 003)
 
