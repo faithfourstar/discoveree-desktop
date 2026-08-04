@@ -108,7 +108,8 @@ describe('migration idempotency (persistent directory)', () => {
         second.db,
         sql`select count(*)::int as count from information_schema.tables where table_schema = 'public'`,
       );
-      expect(tables).toEqual([{ count: 46 }]);
+      // 48 after migration 0001 (ADR 005): +intel_proposals, +mcp_activity.
+      expect(tables).toEqual([{ count: 48 }]);
       await second.close();
     } finally {
       rmSync(dataDir, { recursive: true, force: true });

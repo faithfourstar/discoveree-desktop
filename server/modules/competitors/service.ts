@@ -17,7 +17,7 @@
  */
 import { randomUUID } from "node:crypto";
 import type { AgentSchedule, CompetitorEntity, CompetitorProfile, Product } from "@shared/schema";
-import { ConflictError } from "../../http/errors.js";
+import { ConflictError, NotFoundError } from "../../http/errors.js";
 import { trackAgentExecution, getAiAgentExecutionsByProduct } from "../../lib/agents/executions.js";
 import { getAiAgent } from "../../lib/agents/registry.js";
 import { AgentSlugs } from "../../lib/agents/slugs.js";
@@ -894,6 +894,150 @@ export async function listTrackedCompetitorNames(productId: string): Promise<str
   return joined
     .filter(j => j.profile.status === "tracked" && j.profile.sourceCategory !== "own_product")
     .map(j => j.entity.name);
+}
+
+// ── Intel proposals (ADR 005 §3.3 — propose → review → materialise) ─────────
+
+/** kind → competitor_changes.changeType (feature|pricing|update|announcement). */
+function intelKindToChangeType(kind: string): string {
+  switch (kind) {
+    case "pricing": return "pricing";
+    case "feature": return "feature";
+    case "news": return "announcement";
+    default: return "update"; // positioning | customer | other
+  }
+}
+
+export interface ProposeIntelInput {
+  competitor: string; // facet id, entity id, or name
+  intel: string;
+  kind: string;
+  sourceUrl?: string | null;
+  effectiveDate?: Date | null;
+  provenance: Record<string, unknown>;
+}
+
+/**
+ * Queue competitor intel (ADR 005 §3.3). Resolution reuses the add-flow
+ * lookup across both tree levels; NO match stores targetKind "new_competitor"
+ * with the name — MCP never creates entity rows (entity creation triggers
+ * enrichment, which MCP handlers must not do).
+ */
+export async function proposeCompetitorIntel(
+  organizationId: string,
+  productId: string,
+  input: ProposeIntelInput,
+): Promise<{ proposalId: string; targetEntityId: string | null; targetName: string | null }> {
+  // Resolve: facet id → its entity; entity id; then normalised name.
+  let entity: CompetitorEntity | undefined;
+  const asFacet = await storage.getCompetitorProfileById(input.competitor);
+  if (asFacet && asFacet.productId === productId) {
+    entity = await storage.getCompetitorEntityById(asFacet.entityId);
+  }
+  if (!entity) {
+    const asEntity = await storage.getCompetitorEntityById(input.competitor);
+    if (asEntity && asEntity.organizationId === organizationId) entity = asEntity;
+  }
+  if (!entity) {
+    entity = await storage.findCompetitorEntityByNormalizedName(
+      organizationId,
+      normalizeCompetitorName(input.competitor),
+    );
+  }
+
+  const proposal = await storage.createIntelProposal({
+    organizationId,
+    productId,
+    targetKind: entity ? "competitor_entity" : "new_competitor",
+    targetEntityId: entity?.id ?? null,
+    targetName: entity ? null : input.competitor,
+    kind: input.kind,
+    claim: input.intel,
+    sourceUrl: input.sourceUrl ?? null,
+    effectiveDate: input.effectiveDate ?? null,
+    provenance: input.provenance,
+    status: "pending",
+  });
+
+  return { proposalId: proposal.id, targetEntityId: entity?.id ?? null, targetName: entity ? null : input.competitor };
+}
+
+/**
+ * Accept a pending proposal (REST review surface — human decision):
+ * - competitor_entity → materialise an entity-keyed competitor_changes row
+ *   (sourceType "internal_report", changeType from kind, provenance carried,
+ *   urlVerified null). Accepted intel lands where every other observed change
+ *   lands — the change feed is the module's "what's new" spine.
+ * - new_competitor → hand off to the STANDARD add-competitor flow (proposed
+ *   facet + enrichment through its own gate) and materialise the claim as a
+ *   change row on the new entity (visible on its proposal card).
+ */
+export async function acceptIntelProposal(
+  organizationId: string,
+  product: Product,
+  proposalId: string,
+  decidedByUserId: string,
+): Promise<{ proposal: import("@shared/schema").IntelProposal; changeId: string | null }> {
+  const proposal = await storage.getIntelProposalById(proposalId);
+  if (!proposal || proposal.productId !== product.id) {
+    throw new NotFoundError("Intel proposal not found");
+  }
+  if (proposal.status !== "pending") {
+    throw new ConflictError("This proposal has already been decided.");
+  }
+
+  let targetEntityId = proposal.targetEntityId;
+  if (proposal.targetKind === "new_competitor") {
+    const { profile, entity } = await addCompetitor(organizationId, product, {
+      name: proposal.targetName ?? "Unknown competitor",
+      classification: "DIRECT",
+    });
+    targetEntityId = entity.id;
+    void startEnrichment(organizationId, product, profile.id);
+  }
+
+  let changeId: string | null = null;
+  if (targetEntityId) {
+    const change = await storage.createCompetitorChange({
+      entityId: targetEntityId,
+      sourceCategory: "competitor",
+      changeType: intelKindToChangeType(proposal.kind),
+      changeTitle: proposal.claim.length > 120 ? `${proposal.claim.slice(0, 117)}...` : proposal.claim,
+      changeDescription: proposal.claim,
+      sourceUrl: proposal.sourceUrl,
+      sourceType: "internal_report", // vocabulary extension (ADR 005 §3.3)
+      urlVerified: null,
+      provenance: proposal.provenance as Record<string, unknown> | null,
+    });
+    changeId = change.id;
+  }
+
+  const updated = await storage.updateIntelProposal(proposal.id, {
+    status: "accepted",
+    decidedAt: new Date(),
+    decidedByUserId,
+    acceptedChangeId: changeId,
+  });
+  return { proposal: updated, changeId };
+}
+
+export async function dismissIntelProposal(
+  productId: string,
+  proposalId: string,
+  decidedByUserId: string,
+): Promise<import("@shared/schema").IntelProposal> {
+  const proposal = await storage.getIntelProposalById(proposalId);
+  if (!proposal || proposal.productId !== productId) {
+    throw new NotFoundError("Intel proposal not found");
+  }
+  if (proposal.status !== "pending") {
+    throw new ConflictError("This proposal has already been decided.");
+  }
+  return storage.updateIntelProposal(proposal.id, {
+    status: "dismissed",
+    decidedAt: new Date(),
+    decidedByUserId,
+  });
 }
 
 // ── Entity agent target resolution (scheduler wiring, ADR 003 §2.7) ─────────

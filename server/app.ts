@@ -14,8 +14,14 @@ import { registerProductRoutes } from "./modules/products/routes.js";
 import { registerCompetitorRoutes } from "./modules/competitors/routes.js";
 import { registerCustomerRoutes } from "./modules/customers/routes.js";
 import { registerSettingsRoutes } from "./modules/settings/routes.js";
+import { mountMcp, type MountMcpOptions } from "./mcp/http.js";
 
-export function buildApp(): express.Express {
+export interface BuildAppOptions {
+  /** DNS-rebinding allow-list for the /mcp endpoint (ADR 005 §1.5). */
+  mcpAllowedHosts?: MountMcpOptions["allowedHosts"];
+}
+
+export function buildApp(options: BuildAppOptions = {}): express.Express {
   const app = express();
   app.use(express.json({ limit: "10mb" }));
   app.use("/api", localIdentity);
@@ -25,6 +31,10 @@ export function buildApp(): express.Express {
   registerCompetitorRoutes(app);
   registerCustomerRoutes(app);
   registerSettingsRoutes(app);
+  // Localhost HTTP MCP (ADR 005 §1.1 in-app mode) — same listener, same port,
+  // same identity seam as the API.
+  app.use("/mcp", localIdentity);
+  mountMcp(app, { allowedHosts: options.mcpAllowedHosts });
   app.use("/api", notFoundHandler); // unknown /api/* → 404 JSON, never the SPA
   app.use(errorMiddleware);
   return app;

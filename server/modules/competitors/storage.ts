@@ -17,6 +17,7 @@ import {
   competitorEntities,
   competitorProfiles,
   competitorThreatLevelHistory,
+  intelProposals,
   type CompetitorChange,
   type CompetitorEntity,
   type CompetitorProfile,
@@ -24,6 +25,7 @@ import {
   type InsertCompetitorChange,
   type InsertCompetitorEntity,
   type InsertCompetitorThreatLevelHistory,
+  type IntelProposal,
 } from "@shared/schema";
 import { getDb } from "../../db/index.js";
 
@@ -513,6 +515,56 @@ export async function deleteCompetitorChangesByEntities(entityIds: string[]): Pr
   if (entityIds.length === 0) return;
   const db = getDb();
   await db.delete(competitorChanges).where(inArray(competitorChanges.entityId, entityIds));
+}
+
+// ── Intel proposals (ADR 005 §3.3 — the MCP proposal queue) ─────────────────
+
+export async function createIntelProposal(insert: typeof intelProposals.$inferInsert): Promise<IntelProposal> {
+  const db = getDb();
+  const [proposal] = await db.insert(intelProposals).values(insert).returning();
+  return proposal!;
+}
+
+export async function getIntelProposalById(id: string): Promise<IntelProposal | undefined> {
+  const db = getDb();
+  const [proposal] = await db.select().from(intelProposals).where(eq(intelProposals.id, id));
+  return proposal || undefined;
+}
+
+export async function getIntelProposalsByProduct(
+  productId: string,
+  status?: string,
+): Promise<IntelProposal[]> {
+  const db = getDb();
+  const conditions = [eq(intelProposals.productId, productId)];
+  if (status) conditions.push(eq(intelProposals.status, status));
+  return db
+    .select()
+    .from(intelProposals)
+    .where(and(...conditions))
+    .orderBy(desc(intelProposals.createdAt));
+}
+
+export async function countPendingIntelProposals(productId: string): Promise<number> {
+  const db = getDb();
+  const [row] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(intelProposals)
+    .where(and(eq(intelProposals.productId, productId), eq(intelProposals.status, "pending")));
+  return Number(row?.count || 0);
+}
+
+export async function updateIntelProposal(
+  id: string,
+  update: Partial<typeof intelProposals.$inferInsert>,
+): Promise<IntelProposal> {
+  const db = getDb();
+  const [proposal] = await db
+    .update(intelProposals)
+    .set(update)
+    .where(eq(intelProposals.id, id))
+    .returning();
+  return proposal!;
 }
 
 // ── Threat level history (unchanged: threat is a facet concept) ─────────────

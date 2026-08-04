@@ -8,6 +8,13 @@
       "when": 1785841370172,
       "tag": "0000_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785850022142,
+      "tag": "0001_mcp-surface",
+      "breakpoints": true
     }
   ]
 }

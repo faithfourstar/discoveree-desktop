@@ -907,11 +907,71 @@ export const competitorChanges = pgTable("competitor_changes", {
   // and shown, but flagged in the UI. Null on rows created before this column existed.
   urlVerified: boolean("url_verified"),
   failureReason: text("failure_reason"), // structured failure code if agent run failed for this item
+  // MCP-writer provenance (ADR 005 §3.5, mcpProvenanceSchema in
+  // shared/provenance.ts). Null on agent-written rows — their sourceType/
+  // sourceUrl already carry provenance. Additive migration 0001.
+  provenance: jsonb("provenance"),
   detectedAt: timestamp("detected_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   index("idx_competitor_changes_entity").on(table.entityId, table.detectedAt),
 ]);
+
+// Intel Proposals — the ADR 005 §3.3 proposal queue: MCP-proposed competitor
+// intel ALWAYS lands here (never directly on tracked context); accept
+// materialises an entity-keyed competitor_changes row (sourceType
+// "internal_report"); unresolved names queue as targetKind "new_competitor" —
+// MCP never creates entity rows. Built generically: targetKind vocabulary
+// reserves "segment" and "product_fact" for the later §4a writers.
+export const INTEL_PROPOSAL_KINDS = ["pricing", "feature", "news", "positioning", "customer", "other"] as const;
+export const intelProposalKindSchema = z.enum(INTEL_PROPOSAL_KINDS);
+export type IntelProposalKind = z.infer<typeof intelProposalKindSchema>;
+
+export const intelProposals = pgTable("intel_proposals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull(),
+  productId: varchar("product_id").notNull(), // the product context it was proposed in
+  targetKind: text("target_kind").notNull().default("competitor_entity"), // competitor_entity | new_competitor (reserved: segment, product_fact)
+  targetEntityId: varchar("target_entity_id"), // -> competitor_entities.id; null when new_competitor
+  targetName: text("target_name"), // the unresolved name when new_competitor
+  kind: text("kind").notNull().default("other"), // pricing | feature | news | positioning | customer | other
+  claim: text("claim").notNull(), // verbatim intel, in the sharer's words
+  sourceUrl: text("source_url"),
+  effectiveDate: timestamp("effective_date"), // when the observed thing happened, if known
+  provenance: jsonb("provenance"), // mcpProvenanceSchema shape
+  status: text("status").notNull().default("pending"), // pending | accepted | dismissed
+  decidedAt: timestamp("decided_at"),
+  decidedByUserId: varchar("decided_by_user_id"),
+  acceptedChangeId: varchar("accepted_change_id"), // -> competitor_changes.id once materialised
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_intel_proposals_product_status").on(table.productId, table.status),
+  index("idx_intel_proposals_entity").on(table.targetEntityId),
+]);
+
+export const insertIntelProposalSchema = createInsertSchema(intelProposals).omit({ id: true, createdAt: true });
+export type IntelProposal = typeof intelProposals.$inferSelect;
+export type InsertIntelProposal = z.infer<typeof insertIntelProposalSchema>;
+
+// MCP Activity — consumption metrics for the Context Health MCP panel
+// ("Claude — 118 queries this week", ADR 005 §2.7). Activity ONLY: request
+// payloads are NEVER logged ("data stays local" is the headline). Pruned
+// beyond 90 days by a cheap on-launch sweep.
+export const mcpActivity = pgTable("mcp_activity", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  clientName: text("client_name"), // from the initialize handshake's clientInfo; null when unknown
+  clientVersion: text("client_version"),
+  toolName: text("tool_name").notNull(),
+  isError: boolean("is_error").notNull().default(false),
+  keyId: varchar("key_id"), // reader-key id when one exists (5b); null on owner seat
+  calledAt: timestamp("called_at").notNull().defaultNow(),
+}, (table) => [
+  index("idx_mcp_activity_called_at").on(table.calledAt),
+]);
+
+export const insertMcpActivitySchema = createInsertSchema(mcpActivity).omit({ id: true, calledAt: true });
+export type McpActivityRow = typeof mcpActivity.$inferSelect;
+export type InsertMcpActivity = z.infer<typeof insertMcpActivitySchema>;
 
 // Competitor Profiles — the per-product FACET (ADR 003 §2.2): "the profile of
 // this competitor AS SEEN BY THIS PRODUCT". Entity facts (identity, features,
@@ -1104,7 +1164,10 @@ export const feedbackEntries = pgTable("feedback_entries", {
   competitorEntityId: varchar("competitor_entity_id"), // -> competitor_entities.id when isCompetitor (ADR 004 §2 cross-allocation)
   sourceName: text("source_name").notNull(), // e.g., "G2", "Capterra", "TrustRadius", "Manual"
   sourceUrl: text("source_url"), // Link to the original review
-  sourceType: text("source_type").notNull().default("review"), // review, comparison, forum, manual
+  sourceType: text("source_type").notNull().default("review"), // review, comparison, forum, manual, mcp (ADR 005 §3.2)
+  // MCP-writer provenance (ADR 005 §3.5): { via: "mcp", client, sharedBy,
+  // keyId, detail, at }. Null on non-MCP rows. Additive migration 0001.
+  provenance: jsonb("provenance"),
   verified: boolean("verified").notNull().default(false), // Whether the sourceUrl has been verified to work
   collectedAt: timestamp("collected_at").notNull().defaultNow(), // When the feedback was collected
   topic: text("topic"), // Feature/topic this relates to

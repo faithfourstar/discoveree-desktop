@@ -75,10 +75,13 @@ async function main(): Promise<void> {
     await seedAgents();
     registerCompetitorAgents();
     registerCustomerAgents();
+    // Cheap on-launch sweep (ADR 005 §2.7): activity rows beyond 90 days go.
+    const { pruneMcpActivity } = await import("./mcp/activity.js");
+    await pruneMcpActivity();
 
     const app = buildApp();
     server = app.listen(PORT, HOST, () => {
-      console.log(`[Discoveree] API listening on http://${HOST}:${PORT}`);
+      console.log(`[Discoveree] API + MCP listening on http://${HOST}:${PORT} (MCP at /mcp)`);
     });
 
     startScheduler();

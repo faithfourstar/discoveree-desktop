@@ -162,5 +162,20 @@ export function registerSettingsRoutes(app: Express): void {
     res.json(await getAboutInfo());
   }));
 
+  // MCP connection snippets (ADR 005 §5.1/§5.2) — copy-paste-true for THIS
+  // install via the one resolver; never a hardcoded string.
+  router.get("/settings/mcp-config", asyncHandler(async (_req, res) => {
+    const { buildMcpConfigSnippets } = await import("../../mcp/cliInvocation.js");
+    res.json(buildMcpConfigSnippets());
+  }));
+
+  // MCP consumption summary (ADR 005 §2.7) — org-level activity for the
+  // Connections/Context Health panels. Payloads are never included; the
+  // table never stores them.
+  router.get("/settings/mcp-activity", asyncHandler(async (_req, res) => {
+    const { getMcpActivitySummary } = await import("../../mcp/activity.js");
+    res.json(await getMcpActivitySummary(7));
+  }));
+
   app.use("/api", router);
 }

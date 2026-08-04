@@ -13,7 +13,7 @@
  */
 import type { Express, Request } from "express";
 import { Router } from "express";
-import type { CompetitorEntity, CompetitorProfile } from "@shared/schema";
+import type { CompetitorEntity, CompetitorProfile, IntelProposal } from "@shared/schema";
 import { asyncHandler } from "../../http/asyncHandler.js";
 import { ConflictWithPayloadError, NotFoundError } from "../../http/errors.js";
 import { productContext, requireProductFromRequest } from "../../http/productContext.js";
@@ -98,7 +98,7 @@ export function toCompetitorCard(
  * Batch-resolve the alsoTrackedBy contract field: for each entity, the OTHER
  * products of the org holding a tracked facet on it.
  */
-async function alsoTrackedByForEntities(
+export async function alsoTrackedByForEntities(
   organizationId: string,
   entityIds: string[],
   excludeProductId: string,
@@ -116,6 +116,73 @@ async function alsoTrackedByForEntities(
     map.set(facet.entityId, list);
   }
   return map;
+}
+
+/**
+ * The competitor DETAIL payload — card + provenance detail + the ADR 004 §6.4
+ * "What buyers say" block, with child→root fact fallback. Exported so the
+ * route and the MCP `get_competitor` tool serve ONE projection (ADR 005 §2.2:
+ * MCP never invents a second projection).
+ */
+export function buildCompetitorDetailPayload(
+  joined: FacetWithEntity,
+  alsoTrackedBy: Array<{ productId: string; productName: string }>,
+): Record<string, unknown> {
+  const { profile, entity, parent } = joined;
+  const facts = service.entityFactsWithFallback(entity, parent);
+
+  const citations = (facts.summaryCitations as string[] | null) ?? null;
+  const summarySourceUrl = facts.descriptionSourceUrl || null;
+
+  const keyDifferentiators = ((profile.keyDifferentiators as string[] | null) ?? []).map(text => ({
+    text,
+    sourceUrl: resolveCitationUrl(text, citations, summarySourceUrl),
+  }));
+
+  const keyFeatures = ((facts.keyFeatures as Array<{ feature?: string; name?: string; sourceUrl?: string | null }> | null) ?? [])
+    .map(f => ({
+      feature: f.feature || f.name || "",
+      sourceUrl: f.sourceUrl ?? null,
+    }))
+    .filter(f => f.feature);
+
+  const markets = ((facts.markets as Array<{ market?: string; sourceUrl?: string | null }> | null) ?? [])
+    .map(m => ({ market: m.market || "", sourceUrl: m.sourceUrl ?? null }))
+    .filter(m => m.market);
+
+  // "What buyers say" block (ADR 004 §6.4) — from the entity review columns
+  // with child→root fallback. Unverifiable quotes are flagged, never hidden.
+  const reviews = {
+    averageRating: facts.reviewAverageRating ?? null,
+    totalCount: facts.reviewTotalCount ?? null,
+    platforms: (facts.reviewPlatforms as Array<{ name: string; url: string; rating?: number | null; reviewCount?: number | null }> | null) ?? [],
+    positiveThemes: (facts.reviewPositiveThemes as string[] | null) ?? [],
+    negativeThemes: (facts.reviewNegativeThemes as string[] | null) ?? [],
+    quotes: ((facts.reviews as Array<{ text?: string; source?: string; sourceUrl?: string; sentiment?: number | null; date?: string | null; verified?: boolean }> | null) ?? [])
+      .filter(q => q.text)
+      .map(q => ({
+        text: q.text!,
+        source: q.source ?? "Web",
+        sourceUrl: q.sourceUrl ?? "",
+        sentiment: q.sentiment ?? null,
+        date: q.date ?? null,
+        verified: q.verified ?? false,
+      })),
+  };
+
+  return {
+    ...toCompetitorCard(joined, alsoTrackedBy),
+    keyDifferentiators,
+    keyFeatures,
+    markets,
+    summarySourceUrl,
+    reviews,
+    // Monitoring stamps (ADR 005 §2.2 get_competitor row)
+    pricing: facts.pricing ?? null,
+    pricingSourceUrl: facts.pricingSourceUrl ?? null,
+    integrations: facts.integrations ?? null,
+    changelogLastCheckedAt: facts.changelogLastCheckedAt ? new Date(facts.changelogLastCheckedAt).toISOString() : null,
+  };
 }
 
 /**
@@ -258,60 +325,12 @@ export function registerCompetitorRoutes(app: Express): void {
   router.get("/competitors/:id", asyncHandler(async (req, res) => {
     const product = requireProductFromRequest(req);
     const joined = await requireFacet(req, req.params["id"]!);
-    const { profile, entity, parent } = joined;
-    const facts = service.entityFactsWithFallback(entity, parent);
-    const alsoTracked = await alsoTrackedByForEntities(req.ctx.organizationId, [entity.id], product.id);
-
-    const citations = (facts.summaryCitations as string[] | null) ?? null;
-    const summarySourceUrl = facts.descriptionSourceUrl || null;
-
-    const keyDifferentiators = ((profile.keyDifferentiators as string[] | null) ?? []).map(text => ({
-      text,
-      sourceUrl: resolveCitationUrl(text, citations, summarySourceUrl),
-    }));
-
-    const keyFeatures = ((facts.keyFeatures as Array<{ feature?: string; name?: string; sourceUrl?: string | null }> | null) ?? [])
-      .map(f => ({
-        feature: f.feature || f.name || "",
-        sourceUrl: f.sourceUrl ?? null,
-      }))
-      .filter(f => f.feature);
-
-    const markets = ((facts.markets as Array<{ market?: string; sourceUrl?: string | null }> | null) ?? [])
-      .map(m => ({ market: m.market || "", sourceUrl: m.sourceUrl ?? null }))
-      .filter(m => m.market);
-
-    const changes = await storage.getCompetitorChangesByEntity(entity.id, 20);
-
-    // "What buyers say" block (ADR 004 §6.4) — from the entity review columns
-    // with child→root fallback. Unverifiable quotes are flagged, never hidden.
-    const reviews = {
-      averageRating: facts.reviewAverageRating ?? null,
-      totalCount: facts.reviewTotalCount ?? null,
-      platforms: (facts.reviewPlatforms as Array<{ name: string; url: string; rating?: number | null; reviewCount?: number | null }> | null) ?? [],
-      positiveThemes: (facts.reviewPositiveThemes as string[] | null) ?? [],
-      negativeThemes: (facts.reviewNegativeThemes as string[] | null) ?? [],
-      quotes: ((facts.reviews as Array<{ text?: string; source?: string; sourceUrl?: string; sentiment?: number | null; date?: string | null; verified?: boolean }> | null) ?? [])
-        .filter(q => q.text)
-        .map(q => ({
-          text: q.text!,
-          source: q.source ?? "Web",
-          sourceUrl: q.sourceUrl ?? "",
-          sentiment: q.sentiment ?? null,
-          date: q.date ?? null,
-          verified: q.verified ?? false,
-        })),
-    };
+    const alsoTracked = await alsoTrackedByForEntities(req.ctx.organizationId, [joined.entity.id], product.id);
+    const competitor = buildCompetitorDetailPayload(joined, alsoTracked.get(joined.entity.id) ?? []);
+    const changes = await storage.getCompetitorChangesByEntity(joined.entity.id, 20);
 
     res.json({
-      competitor: {
-        ...toCompetitorCard(joined, alsoTracked.get(entity.id) ?? []),
-        keyDifferentiators,
-        keyFeatures,
-        markets,
-        summarySourceUrl,
-        reviews,
-      },
+      competitor,
       changes: changes.map(toChange),
       // DeepDiveThread — strategy sprint; shape reserved per mock/types.ts
       openThread: null,
@@ -439,9 +458,57 @@ export function registerCompetitorRoutes(app: Express): void {
     });
   }));
 
+  // ── Intel proposals (ADR 005 §3.3 review surface) ─────────────────────────
+  // MCP-proposed intel queues here; nothing touches tracked context until a
+  // human accepts. Accept materialises an entity-keyed competitor_changes row
+  // (sourceType "internal_report"); the proposal row survives as the audit
+  // link (acceptedChangeId).
+
+  router.get("/intel-proposals", asyncHandler(async (req, res) => {
+    const product = requireProductFromRequest(req);
+    const status = req.query["status"] ? String(req.query["status"]) : undefined;
+    const proposals = await storage.getIntelProposalsByProduct(product.id, status);
+    res.json({ proposals: proposals.map(toIntelProposalView) });
+  }));
+
+  router.post("/intel-proposals/:proposalId/accept", asyncHandler(async (req, res) => {
+    const product = requireProductFromRequest(req);
+    const { proposal, changeId } = await service.acceptIntelProposal(
+      req.ctx.organizationId,
+      product,
+      req.params["proposalId"]!,
+      req.ctx.userId,
+    );
+    res.json({ proposal: toIntelProposalView(proposal), acceptedChangeId: changeId });
+  }));
+
+  router.post("/intel-proposals/:proposalId/dismiss", asyncHandler(async (req, res) => {
+    const product = requireProductFromRequest(req);
+    const proposal = await service.dismissIntelProposal(product.id, req.params["proposalId"]!, req.ctx.userId);
+    res.json({ proposal: toIntelProposalView(proposal) });
+  }));
+
   app.use("/api/products/:productId", productContext, router);
 
   registerEntityRoutes(app);
+}
+
+function toIntelProposalView(proposal: IntelProposal): Record<string, unknown> {
+  return {
+    id: proposal.id,
+    targetKind: proposal.targetKind,
+    targetEntityId: proposal.targetEntityId ?? null,
+    targetName: proposal.targetName ?? null,
+    kind: proposal.kind,
+    claim: proposal.claim,
+    sourceUrl: proposal.sourceUrl ?? null,
+    effectiveDate: proposal.effectiveDate ? new Date(proposal.effectiveDate).toISOString() : null,
+    provenance: proposal.provenance ?? null,
+    status: proposal.status,
+    decidedAt: proposal.decidedAt ? new Date(proposal.decidedAt).toISOString() : null,
+    acceptedChangeId: proposal.acceptedChangeId ?? null,
+    createdAt: proposal.createdAt ? new Date(proposal.createdAt).toISOString() : null,
+  };
 }
 
 // ── Org-level entity routes (/api/entities/competitors, §1.1/§2.5) ──────────

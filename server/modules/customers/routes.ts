@@ -49,7 +49,7 @@ interface PersonaWithFacetView {
   provenance: string;
 }
 
-function toPersonaView(persona: Persona, facet: PersonaFacet): PersonaWithFacetView {
+export function toPersonaView(persona: Persona, facet: PersonaFacet): PersonaWithFacetView {
   return {
     id: persona.id,
     facetId: facet.id,
@@ -65,7 +65,7 @@ function toPersonaView(persona: Persona, facet: PersonaFacet): PersonaWithFacetV
   };
 }
 
-async function toSegmentCard(
+export async function toSegmentCard(
   facet: CustomerSegmentProfile,
   entity: SegmentEntity,
   personaCount: number,
@@ -87,7 +87,7 @@ async function toSegmentCard(
   };
 }
 
-function toFeedbackView(entry: FeedbackEntry): Record<string, unknown> {
+export function toFeedbackView(entry: FeedbackEntry): Record<string, unknown> {
   return {
     id: entry.id,
     isCompetitor: entry.isCompetitor,
@@ -107,7 +107,7 @@ function toFeedbackView(entry: FeedbackEntry): Record<string, unknown> {
   };
 }
 
-function toThemeView(
+export function toThemeView(
   theme: FeedbackTheme,
   consolidationSuggested: boolean,
   sourceNameByEntryId: Map<string, string>,
@@ -139,8 +139,37 @@ function toThemeView(
   };
 }
 
+/**
+ * The SegmentDetail payload (ADR 004 §6.1) — exported so the route and the
+ * MCP `get_segment` tool serve ONE projection (ADR 005 §2.2).
+ */
+export async function buildSegmentDetailPayload(
+  productId: string,
+  facet: CustomerSegmentProfile,
+  entity: SegmentEntity,
+): Promise<Record<string, unknown>> {
+  const personas = await storage.getPersonasWithFacetsForProduct(entity.id, productId);
+  const card = await toSegmentCard(facet, entity, personas.length);
+  return {
+    ...card,
+    description: entity.description ?? null,
+    needsSummary: facet.needsSummary ?? null,
+    needs: facet.needs ?? [],
+    jobsToBeDone: facet.jobsToBeDone ?? null,
+    overallSatisfaction: facet.overallSatisfaction ?? null, // computed, §3.4
+    csatScore: facet.csatScore ?? null,
+    npsScore: facet.npsScore ?? null,
+    quotes: facet.quotes ?? [],
+    researchItems: facet.researchItems ?? [],
+    segmentInsights: facet.segmentInsights ?? null,
+    opportunities: facet.opportunities ?? [],
+    recommendations: facet.recommendations ?? [],
+    personas: personas.map(p => toPersonaView(p.persona, p.facet)),
+  };
+}
+
 /** Batch-load the member entries' source names for a set of themes. */
-async function sourceNamesForThemes(themes: FeedbackTheme[]): Promise<Map<string, string>> {
+export async function sourceNamesForThemes(themes: FeedbackTheme[]): Promise<Map<string, string>> {
   const allIds = [...new Set(themes.flatMap(t => (t.feedbackEntryIds as string[] | null) ?? []))];
   const entries = await storage.getFeedbackEntriesByIds(allIds);
   return new Map(entries.map(e => [e.id, e.sourceName]));
@@ -224,26 +253,7 @@ export function registerCustomerRoutes(app: Express): void {
   router.get("/segments/:id", asyncHandler(async (req, res) => {
     const product = requireProductFromRequest(req);
     const { facet, entity } = await requireSegment(req, req.params["id"]!);
-    const personas = await storage.getPersonasWithFacetsForProduct(entity.id, product.id);
-    const card = await toSegmentCard(facet, entity, personas.length);
-    res.json({
-      segment: {
-        ...card,
-        description: entity.description ?? null,
-        needsSummary: facet.needsSummary ?? null,
-        needs: facet.needs ?? [],
-        jobsToBeDone: facet.jobsToBeDone ?? null,
-        overallSatisfaction: facet.overallSatisfaction ?? null, // computed, §3.4
-        csatScore: facet.csatScore ?? null,
-        npsScore: facet.npsScore ?? null,
-        quotes: facet.quotes ?? [],
-        researchItems: facet.researchItems ?? [],
-        segmentInsights: facet.segmentInsights ?? null,
-        opportunities: facet.opportunities ?? [],
-        recommendations: facet.recommendations ?? [],
-        personas: personas.map(p => toPersonaView(p.persona, p.facet)),
-      },
-    });
+    res.json({ segment: await buildSegmentDetailPayload(product.id, facet, entity) });
   }));
 
   router.patch("/segments/:id", asyncHandler(async (req, res) => {

@@ -2,7 +2,7 @@
   "name": "discoveree-desktop",
   "version": "0.0.1",
   "private": true,
-  "description": "Discoveree Desktop — a local, agent-maintained context layer for your product that any AI tool can connect to.",
+  "description": "Discoveree Desktop \u2014 a local, agent-maintained context layer for your product that any AI tool can connect to.",
   "license": "SEE LICENSE IN LICENSE.md",
   "type": "module",
   "engines": {
@@ -21,6 +21,7 @@
     "@anthropic-ai/sdk": "^0.115.0",
     "@electric-sql/pglite": "0.5.4",
     "@google/genai": "^2.15.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "drizzle-orm": "0.45.2",
     "drizzle-zod": "0.8.3",
     "env-paths": "^3.0.0",
@@ -41,5 +42,8 @@
     "tsx": "^4.23.5",
     "typescript": "^5.9.3",
     "vitest": "^3.2.7"
+  },
+  "bin": {
+    "discoveree": "./bin/discoveree.mjs"
   }
 }
