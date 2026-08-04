@@ -5,11 +5,13 @@ import { parseProductId, productBase } from "@/lib/productUrl";
 import { AddProductPage } from "@/pages/AddProductPage";
 import { CompetitorObjectPage } from "@/pages/CompetitorObjectPage";
 import { CompetitorsOverviewPage } from "@/pages/CompetitorsOverviewPage";
+import { CustomersOverviewPage } from "@/pages/CustomersOverviewPage";
 import { HomePage } from "@/pages/HomePage";
+import { SegmentObjectPage } from "@/pages/SegmentObjectPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { ThemeObjectPage } from "@/pages/ThemeObjectPage";
 import {
   ConnectionsPage,
-  CustomersPage,
   NotFoundPage,
   RoadmapPage,
   SourcesPage,
@@ -68,7 +70,18 @@ export function App() {
             path="/p/:productId/competitors/:id"
             component={CompetitorObjectPage}
           />
-          <Route path="/p/:productId/customers" component={CustomersPage} />
+          <Route
+            path="/p/:productId/customers"
+            component={CustomersOverviewPage}
+          />
+          <Route
+            path="/p/:productId/customers/themes/:id"
+            component={ThemeObjectPage}
+          />
+          <Route
+            path="/p/:productId/customers/segments/:id"
+            component={SegmentObjectPage}
+          />
           <Route path="/p/:productId/strategy" component={StrategyPage} />
           <Route path="/p/:productId/roadmap" component={RoadmapPage} />
           <Route

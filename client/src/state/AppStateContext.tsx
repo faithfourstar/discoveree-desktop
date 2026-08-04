@@ -33,6 +33,7 @@ import {
   deriveObjectFromRow,
   type ResearchStageScript,
 } from "@/mock/competitors";
+import { ordinal, orderSegments, segmentFromName } from "@/mock/customers";
 import { analyticsProduct, makeAppState, relayProduct } from "@/mock/data";
 import {
   agentMeta,
@@ -47,12 +48,18 @@ import type {
   AppState,
   CompetitorObject,
   CompetitorRow,
+  FeedbackItemRef,
   LlmKeyRow,
+  LogFeedbackState,
   MockScenarioKey,
   ProductRef,
   ProviderId,
   RichText,
+  SegmentObject,
+  SegmentRow,
   SettingsState,
+  ThemeObject,
+  ThemeRow,
 } from "@/mock/types";
 
 /**
@@ -291,6 +298,192 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
     if (settingsIntervalRef.current !== null) {
       window.clearInterval(settingsIntervalRef.current);
       settingsIntervalRef.current = null;
+    }
+  };
+
+  // ── Customers — refresh/check simulation (customers spec 7.1/7.4) ─────────
+  const customersIntervalRef = useRef<number | null>(null);
+
+  const clearCustomersInterval = () => {
+    if (customersIntervalRef.current !== null) {
+      window.clearInterval(customersIntervalRef.current);
+      customersIntervalRef.current = null;
+    }
+  };
+
+  /** One run settles: stamps to "just now", stale themes yield movement. */
+  const settleCustomersCheck = (id: string) => {
+    setState((prev) => {
+      const overview = prev.customersOverview;
+      if (!overview) {
+        return prev;
+      }
+      const checking = prev.customersChecking.filter(
+        (entry) => entry.id !== id,
+      );
+      let next: AppState = { ...prev, customersChecking: checking, justVerifiedId: id };
+
+      if (id.startsWith("theme:")) {
+        const row = overview.themes.find((theme) => theme.id === id);
+        const movement = row?.stale === true;
+        next = {
+          ...next,
+          customersOverview: {
+            ...overview,
+            themes: overview.themes.map((theme) => {
+              if (theme.id !== id) {
+                return theme;
+              }
+              const updated: ThemeRow = { ...theme, stale: false };
+              delete updated.staleDays;
+              if (movement) {
+                updated.refreshedAgo = "just now";
+                updated.mentionCount = theme.mentionCount + 2;
+                updated.change = {
+                  line: "Two new mentions filed while it slept — both about renewal terms.",
+                  evidence: [
+                    {
+                      id: `ev:${id}-new-mentions`,
+                      kind: "feedback",
+                      label: "2 mentions",
+                      count: 2,
+                      objectId: id,
+                    },
+                  ],
+                  unseen: true,
+                };
+                delete updated.quietSince;
+              } else {
+                updated.refreshedAgo = "just now · nothing new";
+              }
+              return updated;
+            }),
+          },
+        };
+        const object = prev.themes[id];
+        if (object) {
+          const updated: ThemeObject = {
+            ...object,
+            refreshedAgo: movement ? "just now" : "just now · nothing new",
+          };
+          delete updated.stale;
+          delete updated.staleDays;
+          if (movement) {
+            updated.mentionCount = object.mentionCount + 2;
+            updated.summary =
+              "Two new mentions filed while it slept — both about renewal terms.";
+            updated.changeUnseen = true;
+          }
+          next = { ...next, themes: { ...prev.themes, [id]: updated } };
+        }
+      } else {
+        const row = overview.segments.find((segment) => segment.id === id);
+        const movement = row?.stale === true;
+        next = {
+          ...next,
+          customersOverview: {
+            ...overview,
+            segments: overview.segments.map((segment) => {
+              if (segment.id !== id) {
+                return segment;
+              }
+              const updated: SegmentRow = { ...segment, stale: false };
+              delete updated.staleDays;
+              updated.verifiedAgo = movement
+                ? "just now"
+                : "just now · nothing changed";
+              return updated;
+            }),
+          },
+        };
+        const object = prev.segments[id];
+        if (object) {
+          const updated: SegmentObject = {
+            ...object,
+            verifiedAgo: movement ? "just now" : "just now · nothing changed",
+          };
+          delete updated.stale;
+          delete updated.staleDays;
+          if (movement) {
+            updated.summary =
+              "Verified against a month of new feedback — ten warehouse-sync mentions moved this segment's centre of gravity.";
+            updated.changeUnseen = true;
+          }
+          next = { ...next, segments: { ...prev.segments, [id]: updated } };
+        }
+      }
+
+      if (checking.length === 0) {
+        next = {
+          ...next,
+          footer: {
+            ...next.footer,
+            agents: baseAgentsRef.current,
+            agentsLive: false,
+          },
+        };
+      }
+      return next;
+    });
+    if (tintTimerRef.current !== null) {
+      window.clearTimeout(tintTimerRef.current);
+    }
+    tintTimerRef.current = window.setTimeout(() => {
+      setState((current) => ({ ...current, justVerifiedId: null }));
+    }, 1500);
+  };
+
+  const customersTick = () => {
+    const entries = stateRef.current.customersChecking;
+    if (entries.length === 0) {
+      clearCustomersInterval();
+      return;
+    }
+    const finished = entries
+      .filter((entry) => entry.elapsedS + 1 >= 6)
+      .map((entry) => entry.id);
+    setState((prev) => {
+      const ticked = prev.customersChecking.map((entry) => ({
+        ...entry,
+        elapsedS: entry.elapsedS + 1,
+      }));
+      const longest = ticked.reduce(
+        (max, entry) => Math.max(max, entry.elapsedS),
+        0,
+      );
+      return {
+        ...prev,
+        customersChecking: ticked,
+        footer: {
+          ...prev.footer,
+          agents: `Agents · reading feedback · ${formatElapsed(longest)}`,
+          agentsLive: true,
+        },
+      };
+    });
+    for (const id of finished) {
+      settleCustomersCheck(id);
+    }
+  };
+
+  const startCustomersCheck = (id: string) => {
+    if (stateRef.current.agentsPaused) {
+      return; // Home owns the no-LLM-key message (customers spec 7.3).
+    }
+    if (stateRef.current.customersChecking.some((entry) => entry.id === id)) {
+      return;
+    }
+    setState((prev) => ({
+      ...prev,
+      customersChecking: [...prev.customersChecking, { id, elapsedS: 0 }],
+      footer: {
+        ...prev.footer,
+        agents: "Agents · reading feedback · 0:00",
+        agentsLive: true,
+      },
+    }));
+    if (customersIntervalRef.current === null) {
+      customersIntervalRef.current = window.setInterval(customersTick, 1000);
     }
   };
 
@@ -1316,6 +1509,524 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
       },
       // Orphaned proposals are a live-mode concern; mocks have none.
       resumeProposal: () => undefined,
+      // ── Customers — log feedback (customers spec part 2) ─────────────────
+      openFeedbackFlow: (preset) => {
+        setState((prev) => {
+          const flow: LogFeedbackState = {
+            ...prev.feedbackFlow,
+            open: true,
+          };
+          delete flow.result;
+          delete flow.presetThemeId;
+          delete flow.presetSegmentId;
+          if (preset?.themeId) {
+            flow.presetThemeId = preset.themeId;
+          }
+          if (preset?.segmentId) {
+            flow.presetSegmentId = preset.segmentId;
+          }
+          return { ...prev, feedbackFlow: flow };
+        });
+      },
+      closeFeedbackFlow: () => {
+        // Typed input survives collapse; restored on reopen this session.
+        setState((prev) => ({
+          ...prev,
+          feedbackFlow: { ...prev.feedbackFlow, open: false },
+        }));
+      },
+      setFeedbackField: (field, value) => {
+        setState((prev) => ({
+          ...prev,
+          feedbackFlow: { ...prev.feedbackFlow, [field]: value },
+        }));
+      },
+      fileFeedback: () => {
+        const flow = stateRef.current.feedbackFlow;
+        const text = flow.draft.trim();
+        if (!text) {
+          return;
+        }
+        setState((prev) => {
+          const today = new Intl.DateTimeFormat("en-GB", {
+            day: "numeric",
+            month: "short",
+          }).format(new Date());
+          const overview = prev.customersOverview;
+
+          // Day one: the first filed item swaps the page to the standard
+          // Overview with one honest band (spec 2.4).
+          if (!overview) {
+            return {
+              ...prev,
+              customersOverview: {
+                lede: [
+                  {
+                    text: "One piece of feedback is in — a theme forms when the pattern does.",
+                  },
+                ],
+                themes: [],
+                segments: [],
+                unfiledCount: 1,
+                searchKeyMissing: false,
+              },
+              modules: {
+                ...prev.modules,
+                customers: { ...prev.modules.customers, populated: true },
+              },
+              footer: {
+                ...prev.footer,
+                agents: "Agents · next theme pass Thu 09:00",
+              },
+              segmentProposals: null,
+              feedbackFlow: {
+                open: false,
+                draft: "",
+                result: { kind: "unfiled", totalThemes: 0, unfiledCount: 1 },
+              },
+            };
+          }
+
+          // Agents paused: the verbatim files anyway — never blocked (2.3).
+          if (prev.agentsPaused) {
+            return {
+              ...prev,
+              customersOverview: {
+                ...overview,
+                unfiledCount: (overview.unfiledCount ?? 0) + 1,
+              },
+              feedbackFlow: { open: false, draft: "", result: { kind: "held" } },
+            };
+          }
+
+          const lower = text.toLowerCase();
+          const matched =
+            overview.themes.find((theme) => theme.id === flow.presetThemeId) ??
+            overview.themes.find((theme) =>
+              theme.name
+                .toLowerCase()
+                .split(/\s+/)
+                .some((word) => word.length > 3 && lower.includes(word)),
+            );
+
+          if (!matched) {
+            const unfiledCount = (overview.unfiledCount ?? 0) + 1;
+            return {
+              ...prev,
+              customersOverview: { ...overview, unfiledCount },
+              feedbackFlow: {
+                open: false,
+                draft: "",
+                result: {
+                  kind: "unfiled",
+                  totalThemes: overview.themes.length,
+                  unfiledCount,
+                },
+              },
+            };
+          }
+
+          const count = matched.mentionCount + 1;
+          const item: FeedbackItemRef = {
+            id: `feedback:manual-${Date.now()}`,
+            text,
+            provenance: {
+              kind: "manual",
+              label: flow.where
+                ? `${flow.where.toLowerCase()} · logged by you`
+                : "logged by you",
+              date: flow.when?.trim() ? flow.when : today,
+            },
+            themeId: matched.id,
+            themeName: matched.name,
+            ...(flow.who?.trim() ? { segmentName: flow.who } : {}),
+            ...(flow.presetSegmentId
+              ? { segmentId: flow.presetSegmentId }
+              : {}),
+          };
+          const object = prev.themes[matched.id];
+          return {
+            ...prev,
+            customersOverview: {
+              ...overview,
+              themes: overview.themes.map((theme) =>
+                theme.id === matched.id
+                  ? { ...theme, mentionCount: count, refreshedAgo: "just now" }
+                  : theme,
+              ),
+            },
+            themes: object
+              ? {
+                  ...prev.themes,
+                  [matched.id]: {
+                    ...object,
+                    mentionCount: count,
+                    refreshedAgo: "just now",
+                    items: [item, ...object.items],
+                  },
+                }
+              : prev.themes,
+            feedbackFlow: {
+              open: false,
+              draft: "",
+              result: {
+                kind: "matched",
+                themeId: matched.id,
+                themeName: matched.name,
+                ordinal: ordinal(count),
+              },
+            },
+          };
+        });
+      },
+      clearFeedbackResult: () => {
+        setState((prev) => {
+          if (!prev.feedbackFlow.result) {
+            return prev;
+          }
+          const flow = { ...prev.feedbackFlow };
+          delete flow.result;
+          return { ...prev, feedbackFlow: flow };
+        });
+      },
+      // ── Customers — themes (spec part 4) ─────────────────────────────────
+      refreshTheme: startCustomersCheck,
+      markThemeSeen: (id) => {
+        setState((prev) => {
+          const overview = prev.customersOverview;
+          const object = prev.themes[id];
+          let next = prev;
+          if (overview) {
+            next = {
+              ...next,
+              customersOverview: {
+                ...overview,
+                themes: overview.themes.map((theme) =>
+                  theme.id === id && theme.change?.unseen
+                    ? {
+                        ...theme,
+                        change: { ...theme.change, unseen: false },
+                      }
+                    : theme,
+                ),
+              },
+            };
+          }
+          if (object && (object.changeUnseen || object.renamedFrom)) {
+            const updated: ThemeObject = { ...object, changeUnseen: false };
+            delete updated.renamedFrom;
+            next = { ...next, themes: { ...next.themes, [id]: updated } };
+          }
+          return next;
+        });
+      },
+      renameTheme: (id, name) => {
+        const trimmed = name.trim();
+        if (!trimmed) {
+          return;
+        }
+        setState((prev) => {
+          const overview = prev.customersOverview;
+          const object = prev.themes[id];
+          if (!overview || !object || object.name === trimmed) {
+            return prev;
+          }
+          return {
+            ...prev,
+            customersOverview: {
+              ...overview,
+              themes: overview.themes.map((theme) =>
+                theme.id === id ? { ...theme, name: trimmed } : theme,
+              ),
+            },
+            themes: {
+              ...prev.themes,
+              [id]: { ...object, name: trimmed, renamedFrom: object.name },
+            },
+          };
+        });
+      },
+      mergeThemes: (survivorId, absorbedId) => {
+        setState((prev) => {
+          const overview = prev.customersOverview;
+          const survivor = prev.themes[survivorId];
+          const absorbed = prev.themes[absorbedId];
+          if (!overview || !survivor || !absorbed) {
+            return prev;
+          }
+          const mentionCount = survivor.mentionCount + absorbed.mentionCount;
+          const themes = { ...prev.themes };
+          delete themes[absorbedId];
+          themes[survivorId] = {
+            ...survivor,
+            mentionCount,
+            summary: `Merged ${absorbed.name} in — its ${absorbed.mentionCount} mentions moved across with their sources kept intact.`,
+            changeEvidence: [
+              {
+                id: `ev:${survivorId}-merge`,
+                kind: "feedback",
+                label: `${absorbed.mentionCount} mentions`,
+                count: absorbed.mentionCount,
+                objectId: survivorId,
+              },
+            ],
+            changeUnseen: true,
+            items: [...survivor.items, ...absorbed.items],
+          };
+          return {
+            ...prev,
+            customersOverview: {
+              ...overview,
+              themes: overview.themes
+                .filter((theme) => theme.id !== absorbedId)
+                .map((theme) =>
+                  theme.id === survivorId
+                    ? { ...theme, mentionCount }
+                    : theme,
+                ),
+            },
+            themes,
+          };
+        });
+      },
+      retireTheme: (id) => {
+        setState((prev) => {
+          const overview = prev.customersOverview;
+          const object = prev.themes[id];
+          if (!overview || !object) {
+            return prev;
+          }
+          const themes = { ...prev.themes };
+          delete themes[id];
+          return {
+            ...prev,
+            customersOverview: {
+              ...overview,
+              themes: overview.themes.filter((theme) => theme.id !== id),
+              unfiledCount: (overview.unfiledCount ?? 0) + object.mentionCount,
+            },
+            themes,
+          };
+        });
+      },
+      // ── Customers — segments (spec part 3) ───────────────────────────────
+      checkSegment: startCustomersCheck,
+      markSegmentSeen: (id) => {
+        setState((prev) => {
+          const object = prev.segments[id];
+          if (!object?.changeUnseen) {
+            return prev;
+          }
+          return {
+            ...prev,
+            segments: {
+              ...prev.segments,
+              [id]: { ...object, changeUnseen: false },
+            },
+          };
+        });
+      },
+      setSegmentFit: (id, fit) => {
+        setState((prev) => {
+          const overview = prev.customersOverview;
+          const object = prev.segments[id];
+          if (!overview || !object) {
+            return prev;
+          }
+          const updatedObject: SegmentObject = { ...object };
+          if (fit) {
+            updatedObject.fit = fit;
+          } else {
+            delete updatedObject.fit;
+          }
+          return {
+            ...prev,
+            customersOverview: {
+              ...overview,
+              segments: overview.segments.map((segment) => {
+                if (segment.id !== id) {
+                  return segment;
+                }
+                const updated: SegmentRow = { ...segment };
+                if (fit) {
+                  updated.fit = fit;
+                } else {
+                  delete updated.fit;
+                }
+                return updated;
+              }),
+            },
+            segments: { ...prev.segments, [id]: updatedObject },
+          };
+        });
+      },
+      setSegmentType: (id, type) => {
+        setState((prev) => {
+          const overview = prev.customersOverview;
+          const object = prev.segments[id];
+          if (!overview || !object) {
+            return prev;
+          }
+          const updatedObject: SegmentObject = { ...object };
+          if (type) {
+            updatedObject.type = type;
+          } else {
+            delete updatedObject.type;
+          }
+          return {
+            ...prev,
+            customersOverview: {
+              ...overview,
+              segments: overview.segments.map((segment) => {
+                if (segment.id !== id) {
+                  return segment;
+                }
+                const updated: SegmentRow = { ...segment };
+                if (type) {
+                  updated.type = type;
+                } else {
+                  delete updated.type;
+                }
+                return updated;
+              }),
+            },
+            segments: { ...prev.segments, [id]: updatedObject },
+          };
+        });
+      },
+      removeSegment: (id) => {
+        setState((prev) => {
+          const overview = prev.customersOverview;
+          if (!overview) {
+            return prev;
+          }
+          const segments = { ...prev.segments };
+          delete segments[id];
+          return {
+            ...prev,
+            customersOverview: {
+              ...overview,
+              segments: overview.segments.filter(
+                (segment) => segment.id !== id,
+              ),
+            },
+            segments,
+          };
+        });
+      },
+      addSegmentProposals: (ids) => {
+        setState((prev) => {
+          const seeds = (prev.segmentProposals ?? []).filter((seed) =>
+            ids.includes(seed.id),
+          );
+          if (seeds.length === 0) {
+            return prev;
+          }
+          const created = seeds.map((seed) =>
+            segmentFromName(seed.name, seed.id),
+          );
+          const segments = { ...prev.segments };
+          for (const entry of created) {
+            segments[entry.object.id] = entry.object;
+          }
+          return {
+            ...prev,
+            customersOverview: {
+              lede: [
+                { text: String(created.length), tone: "mono" },
+                {
+                  text:
+                    created.length === 1
+                      ? " segment is now set up — feedback will start linking to it as it files."
+                      : " segments are now set up — feedback will start linking to them as it files.",
+                },
+              ],
+              themes: [],
+              segments: orderSegments(created.map((entry) => entry.row)),
+              searchKeyMissing: false,
+            },
+            segments,
+            modules: {
+              ...prev.modules,
+              customers: { ...prev.modules.customers, populated: true },
+            },
+            footer: {
+              ...prev.footer,
+              agents: "Agents · next theme pass Thu 09:00",
+            },
+            segmentProposals: null,
+          };
+        });
+      },
+      acceptSegmentAdoption: () => {
+        setState((prev) => {
+          const adoption = prev.segmentAdoption;
+          if (!adoption) {
+            return prev;
+          }
+          const slug = adoption.entityId.split(":").pop() ?? "segment";
+          const id = `segment:${slug}`;
+          const servedByProduct: ProductRef = {
+            id: adoption.servedBy.id,
+            name: adoption.servedBy.name,
+          };
+          const row: SegmentRow = {
+            id,
+            entityId: adoption.entityId,
+            name: adoption.name,
+            alsoServedBy: [servedByProduct],
+            verifiedAgo: "just now",
+            stale: false,
+          };
+          const object: SegmentObject = {
+            id,
+            entityId: adoption.entityId,
+            name: adoption.name,
+            verifiedAgo: "just now",
+            personas: adoption.personas,
+            recentItems: [],
+            sources: [
+              {
+                id: `source:${slug}-shared`,
+                name: "Shared entity",
+                feeds: `identity from ${adoption.servedBy.name}`,
+                stamp: `since ${adoption.servedBy.since}`,
+              },
+            ],
+            sharedAcrossProducts: true,
+            alsoServedBy: [servedByProduct],
+            openThread: null,
+            filedThreads: [],
+          };
+          const overview = prev.customersOverview ?? {
+            lede: [
+              { text: adoption.name, tone: "link" as const, objectId: id },
+              {
+                text: " is now part of this product's context. Its facet sections fill as evidence arrives.",
+              },
+            ],
+            themes: [],
+            segments: [],
+            searchKeyMissing: false,
+          };
+          return {
+            ...prev,
+            customersOverview: {
+              ...overview,
+              segments: orderSegments([...overview.segments, row]),
+            },
+            segments: { ...prev.segments, [id]: object },
+            modules: {
+              ...prev.modules,
+              customers: { ...prev.modules.customers, populated: true },
+            },
+            segmentAdoption: null,
+          };
+        });
+      },
+      dismissSegmentAdoption: () => {
+        setState((prev) => ({ ...prev, segmentAdoption: null }));
+      },
       createProduct: ({ url }) => {
         const domain = normaliseDomain(url);
         if (!domain) {
@@ -1424,6 +2135,7 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
     clearFlowTimers();
     clearCheckInterval();
     clearSettingsInterval();
+    clearCustomersInterval();
     const next = buildStateRef.current(scenario, activeProductId);
     builtForProductRef.current = activeProductId;
     baseAgentsRef.current = next.footer.agents;
@@ -1452,6 +2164,7 @@ export function MockAppStateProvider({ children }: { children: ReactNode }) {
       clearFlowTimers();
       clearCheckInterval();
       clearSettingsInterval();
+      clearCustomersInterval();
       if (tintTimerRef.current !== null) {
         window.clearTimeout(tintTimerRef.current);
       }

@@ -5,12 +5,6 @@ import { EmptyState } from "@/components/EmptyState";
  * an invitation — the first step of a job, never an apology.
  */
 
-export function CustomersPage() {
-  return (
-    <EmptyState line="Point Discoveree at your feedback and it will gather the themes here." />
-  );
-}
-
 export function StrategyPage() {
   return (
     <EmptyState line="Define your vision — everything else hangs off it." />

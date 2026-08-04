@@ -4,6 +4,11 @@ import {
   makeOverview,
   onboardingProposals,
 } from "./competitors";
+import {
+  makeCustomers,
+  makeSegmentAdoption,
+  segmentOnboardingProposals,
+} from "./customers";
 import { makeSettings } from "./settings";
 import type {
   AppState,
@@ -166,9 +171,44 @@ function makePopulatedState(scenario: MockScenarioKey): AppState {
     competitors: {},
     competitorAddFlow: { ...initialAddFlow },
     onboardingProposals: null,
+    ...makeCustomersFields(makeCustomers()),
     settings: makeSettings("healthy"),
     agentsPaused: false,
     justVerifiedId: null,
+  };
+}
+
+/** Spread helper: a customers dataset into the AppState field shape. */
+function makeCustomersFields(dataset: ReturnType<typeof makeCustomers>): {
+  customersOverview: AppState["customersOverview"];
+  themes: AppState["themes"];
+  segments: AppState["segments"];
+  feedbackFlow: AppState["feedbackFlow"];
+  customersChecking: AppState["customersChecking"];
+  segmentProposals: AppState["segmentProposals"];
+  segmentAdoption: AppState["segmentAdoption"];
+} {
+  return {
+    customersOverview: dataset.overview,
+    themes: dataset.themes,
+    segments: dataset.segments,
+    feedbackFlow: { open: false, draft: "" },
+    customersChecking: [],
+    segmentProposals: null,
+    segmentAdoption: null,
+  };
+}
+
+/** The empty customers slice (day-one and non-customers scenarios). */
+function emptyCustomersFields(): ReturnType<typeof makeCustomersFields> {
+  return {
+    customersOverview: null,
+    themes: {},
+    segments: {},
+    feedbackFlow: { open: false, draft: "" },
+    customersChecking: [],
+    segmentProposals: null,
+    segmentAdoption: null,
   };
 }
 
@@ -199,6 +239,7 @@ function makeDayOneState(scenario: MockScenarioKey): AppState {
     competitors: {},
     competitorAddFlow: { ...initialAddFlow },
     onboardingProposals: null,
+    ...emptyCustomersFields(),
     settings: makeSettings("day-one"),
     agentsPaused: false,
     justVerifiedId: null,
@@ -270,6 +311,7 @@ export function makeAppState(
       serving: { consumers: [], teammatesReading: 0 },
     };
     state.competitorsOverview = null;
+    Object.assign(state, emptyCustomersFields());
     state.footer = {
       ...state.footer,
       local: "Local · 6 MB on disk",
@@ -285,7 +327,40 @@ export function makeAppState(
       state.productName = relayProduct.name;
       state.home = relayHome;
       state.competitorsOverview = makeOverview("relay");
+      Object.assign(state, emptyCustomersFields());
+    } else {
+      // The Analytics view shows the sharing markers (customers spec 3.2).
+      Object.assign(
+        state,
+        makeCustomersFields(
+          makeCustomers({ multiProduct: { otherProduct: relayProduct } }),
+        ),
+      );
     }
+  } else if (scenario === "customers-day-one") {
+    // Customers enabled but empty: the rail dims, the page invites (2.4).
+    Object.assign(state, emptyCustomersFields());
+    state.modules = {
+      ...state.modules,
+      customers: { enabled: true, populated: false },
+    };
+  } else if (scenario === "customers-proposals") {
+    Object.assign(state, emptyCustomersFields());
+    state.modules = {
+      ...state.modules,
+      customers: { enabled: true, populated: false },
+    };
+    state.segmentProposals = [...segmentOnboardingProposals];
+  } else if (scenario === "customers-adoption") {
+    // A second product reviewing an entity the first already serves (3.4).
+    state.products = [analyticsProduct, relayProduct];
+    state.productName = relayProduct.name;
+    Object.assign(state, emptyCustomersFields());
+    state.modules = {
+      ...state.modules,
+      customers: { enabled: true, populated: false },
+    };
+    state.segmentAdoption = makeSegmentAdoption(analyticsProduct);
   } else if (scenario === "many") {
     state.competitorsOverview = makeOverview("many");
   } else if (scenario === "quiet") {
@@ -294,6 +369,10 @@ export function makeAppState(
     state.competitorsOverview = makeOverview("briefing", {
       searchKeyMissing: true,
     });
+    Object.assign(
+      state,
+      makeCustomersFields(makeCustomers({ searchKeyMissing: true })),
+    );
     state.settings = makeSettings("no-search-key");
   } else if (scenario === "no-llm-key") {
     state.agentsPaused = true;

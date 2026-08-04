@@ -3,6 +3,7 @@ import { briefingState } from "@/mock/data";
 import type {
   AgentFrequency,
   AppState,
+  FitWord,
   ModuleId,
   ProviderId,
   ThreatWord,
@@ -49,6 +50,34 @@ export interface AppActions {
   /** Live mode: resume an orphaned proposed row surfaced on flow open. */
   resumeProposal(): void;
   trackOnboardingProposals(ids: readonly string[]): void;
+  // Customers — log feedback (customers-module-spec part 2)
+  openFeedbackFlow(preset?: { themeId?: string; segmentId?: string }): void;
+  closeFeedbackFlow(): void;
+  setFeedbackField(
+    field: "draft" | "who" | "where" | "when",
+    value: string,
+  ): void;
+  /** Files immediately; matching reports honestly (spec 2.3). */
+  fileFeedback(): void;
+  /** The result line fades after the next navigation, not on a timer. */
+  clearFeedbackResult(): void;
+  // Customers — themes (part 4)
+  refreshTheme(id: string): void;
+  markThemeSeen(id: string): void;
+  renameTheme(id: string, name: string): void;
+  /** Absorbed mentions move across; the name becomes an alias (4.4). */
+  mergeThemes(survivorId: string, absorbedId: string): void;
+  /** Mentions return to the unfiled pool; the name is remembered (4.2). */
+  retireTheme(id: string): void;
+  // Customers — segments (part 3)
+  checkSegment(id: string): void;
+  markSegmentSeen(id: string): void;
+  setSegmentFit(id: string, fit: FitWord | null): void;
+  setSegmentType(id: string, type: "vertical" | "partnership" | null): void;
+  removeSegment(id: string): void;
+  addSegmentProposals(ids: readonly string[]): void;
+  acceptSegmentAdoption(): void;
+  dismissSegmentAdoption(): void;
   // Products (ADR 003)
   /**
    * "Add another product" — day-one-style URL prompt. Creates the product
@@ -105,6 +134,24 @@ export const defaultActions: AppActions = {
   discardProposal: noop,
   resumeProposal: noop,
   trackOnboardingProposals: noop,
+  openFeedbackFlow: noop,
+  closeFeedbackFlow: noop,
+  setFeedbackField: noop,
+  fileFeedback: noop,
+  clearFeedbackResult: noop,
+  refreshTheme: noop,
+  markThemeSeen: noop,
+  renameTheme: noop,
+  mergeThemes: noop,
+  retireTheme: noop,
+  checkSegment: noop,
+  markSegmentSeen: noop,
+  setSegmentFit: noop,
+  setSegmentType: noop,
+  removeSegment: noop,
+  addSegmentProposals: noop,
+  acceptSegmentAdoption: noop,
+  dismissSegmentAdoption: noop,
   createProduct: noop,
   saveLlmKey: noop,
   testLlmKey: noop,

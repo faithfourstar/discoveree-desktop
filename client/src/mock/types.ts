@@ -289,6 +289,293 @@ export interface OnboardingCompetitorProposal {
 }
 
 // ---------------------------------------------------------------------------
+// Customers — Overview (customers-module-spec Appendix A)
+// ---------------------------------------------------------------------------
+
+export type FitWord = "strong fit" | "moderate fit" | "weak fit";
+export type ThemeLifecycle = "forming" | "established" | "fading";
+export type TrendWord = "rising" | "steady" | "easing";
+export type FeedbackSourceKind =
+  | "manual"
+  | "review"
+  | "import" // v1
+  | "mcp"
+  | "crm"
+  | "call"; // later; never rendered until shipped
+
+export interface FeedbackProvenance {
+  kind: FeedbackSourceKind;
+  /** "logged by you", "G2 review", "CSV import · support-export.csv". */
+  label: string;
+  /** "★★☆", channel, filename. */
+  detail?: string;
+  /**
+   * When it was SAID (sourceCreatedAt), display form. Absent ⇒ the item is
+   * undated and renders "date unknown" — the collection date is never
+   * dressed as the feedback date.
+   */
+  date?: string;
+  /** When we gathered it — a separate fact, rendered as "mined 4 Aug". */
+  minedOn?: string;
+  /** Live link where the kind has one. */
+  sourceUrl?: string;
+}
+
+export interface FeedbackItemRef {
+  /** The one stored record both modules cite (spec part 5). */
+  id: string;
+  /** Verbatim, never paraphrased. */
+  text: string;
+  provenance: FeedbackProvenance;
+  segmentId?: string;
+  /** Absent ⇒ unfiled pool. */
+  themeId?: string;
+  /** The crossover chip (spec part 5). */
+  competitorId?: string;
+  /** Display name for the theme chip on segment pages. */
+  themeName?: string;
+  /** Display name for the segment chip on theme pages. */
+  segmentName?: string;
+  competitorName?: string;
+}
+
+/** One-sentence movement line + its citations (shared row shape). */
+export interface ChangeLine {
+  line: string;
+  /** ≥ 1, enforced. */
+  evidence: readonly EvidenceRef[];
+  /** Renders NEW; cleared once the Object has been opened. */
+  unseen: boolean;
+}
+
+export interface ThemeRow {
+  /** Stable ID the Object and MCP cite. */
+  id: string;
+  name: string;
+  lifecycle: ThemeLifecycle;
+  /** ≥ 1 always (a theme with 0 mentions does not exist). */
+  mentionCount: number;
+  /** Absent under 3 mentions (spec 4.3). */
+  sentiment?: number;
+  /** Renders "mixed" instead of the mean. */
+  sentimentMixed?: boolean;
+  trend?: TrendWord;
+  sourceKindCount?: number;
+  refreshedAgo: string;
+  /** now − last refresh > 7 d. */
+  stale: boolean;
+  staleDays?: number;
+  change?: ChangeLine;
+  /** "21 Jul", for the no-movement line. */
+  quietSince?: string;
+}
+
+export interface SegmentRow {
+  /** Facet id — the per-product object (ADR 003 §2.5). */
+  id: string;
+  entityId: string;
+  /** Entity name. */
+  name: string;
+  /** Absent ⇒ plain segment, no badge. */
+  type?: "vertical" | "partnership";
+  /** Absent ⇒ unrated, nothing renders. */
+  fit?: FitWord;
+  personaCount?: number;
+  feedbackCount?: number;
+  sentiment?: number;
+  /** The facet's one-sentence summary. */
+  jtbdLine?: string;
+  /** Non-empty only in multi-product orgs. */
+  alsoServedBy?: readonly ProductRef[];
+  verifiedAgo: string;
+  /** now − last verify > 30 d. */
+  stale: boolean;
+  staleDays?: number;
+}
+
+export interface CustomersOverview {
+  /** "stale" tone for amber clauses. */
+  lede: RichText;
+  /** Pre-ordered: lifecycle, mentions, staleness. */
+  themes: readonly ThemeRow[];
+  /** Pre-ordered: fit, staleness, name. */
+  segments: readonly SegmentRow[];
+  /** The "waiting for a pattern" line (spec 2.3). */
+  unfiledCount?: number;
+  /** Live clause (spec 1.2.5). */
+  reading?: { itemCount: number; elapsedS: number };
+  /** Amber notice (spec 7.3). */
+  searchKeyMissing: boolean;
+}
+
+/**
+ * The evidence-basis contract (spec 0.5, 3.5). Non-empty by construction:
+ * at least one counted evidence kind or ownerProvided — there is no
+ * unsourced display state, so the type forbids one. Enforced at component
+ * level: an empty basis throws in dev and renders nothing in production.
+ */
+export interface EvidenceBasis {
+  /** Each figure a live link to the items. */
+  feedbackCount?: number;
+  reviewCount?: number;
+  /** Renders the "added by you" register. */
+  ownerProvided?: "interview" | "manual";
+  /** e.g. a filed deep dive. */
+  extraRefs?: readonly EvidenceRef[];
+  /** Fixed rule: <5 items or 1 source kind, and no owner assertion. */
+  thin: boolean;
+  /** Single source kind backing the thin copy ("from one source"). */
+  singleSourceKind?: boolean;
+  /** "corrected by you · 4 Aug" — user facts survive refreshes (3.3). */
+  correctedOn?: string;
+}
+
+export interface PersonaBlock {
+  id: string;
+  /** Shared identity. */
+  title: string;
+  /** Shared traits, one line. */
+  identityLine: string;
+  /** Facet — this product only. */
+  goals?: string;
+  /** Facet — this product only. */
+  pains?: string;
+  /** REQUIRED — no basis, no persona (spec 0.5). */
+  basis: EvidenceBasis;
+}
+
+export interface SegmentAdoptionProposal {
+  entityId: string;
+  name: string;
+  /** "Served by Ledger since Mar 2026". */
+  servedBy: ProductRef & { since: string };
+  sharedIdentity: string;
+  /** Identity only; facets are the drafting work. */
+  personas: readonly PersonaBlock[];
+  evidence: readonly EvidenceRef[];
+}
+
+// ---------------------------------------------------------------------------
+// Customers — Objects (spec parts 3 and 4)
+// ---------------------------------------------------------------------------
+
+export interface SegmentBreakdownRow {
+  segmentId: string;
+  name: string;
+  mentions: number;
+  sentiment?: number;
+}
+
+export interface ThemeObject {
+  id: string;
+  name: string;
+  lifecycle: ThemeLifecycle;
+  mentionCount: number;
+  sentiment?: number;
+  sentimentMixed?: boolean;
+  trend?: TrendWord;
+  /** "first heard 12 Jun". */
+  firstHeard?: string;
+  refreshedAgo: string;
+  stale?: boolean;
+  staleDays?: number;
+  /** The what-changed prose (movement since last look). */
+  summary: string;
+  /** ≥ 1 — the prose never renders uncited. */
+  changeEvidence: readonly EvidenceRef[];
+  changeUnseen?: boolean;
+  /** "Renamed from Export caps." — quiet note for one visit (4.4). */
+  renamedFrom?: string;
+  /** What people said — newest first. */
+  items: readonly FeedbackItemRef[];
+  /** Who it comes from — only when segment linkage exists. */
+  segmentBreakdown?: readonly SegmentBreakdownRow[];
+  sources?: readonly SourceRow[];
+  openThread: DeepDiveThread | null;
+  filedThreads: readonly FiledThreadRef[];
+}
+
+export interface NeedRow {
+  id: string;
+  text: string;
+  /** Right-aligned mono where scored, e.g. "satisfied 2 of 5". */
+  satisfied?: string;
+}
+
+export interface SegmentSatisfaction {
+  csat?: number;
+  nps?: number;
+  responses?: number;
+  /** "Jun 2026". */
+  period?: string;
+  sourceUrl?: string;
+}
+
+export interface SegmentObject {
+  /** Facet id. */
+  id: string;
+  entityId: string;
+  name: string;
+  type?: "vertical" | "partnership";
+  fit?: FitWord;
+  feedbackCount?: number;
+  sentiment?: number;
+  verifiedAgo: string;
+  stale?: boolean;
+  staleDays?: number;
+  /** What changed — absent on a fresh profile. */
+  summary?: string;
+  changeEvidence?: readonly EvidenceRef[];
+  changeUnseen?: boolean;
+  /**
+   * Live 422 insufficient_evidence rendering (ADR 004 §3.3): the honest
+   * amber line explaining why enrichment cannot run yet.
+   */
+  enrichNotice?: string;
+  /** Facet sections: absent ⇒ the 3.5 invitation renders in their place. */
+  jobsToBeDone?: { items: readonly string[]; basis: EvidenceBasis };
+  needs?: { items: readonly NeedRow[]; basis: EvidenceBasis };
+  personas: readonly PersonaBlock[];
+  /** What they're telling you; empty ⇒ the section-7 invitation. */
+  recentItems: readonly FeedbackItemRef[];
+  /** Absent entirely when unmeasured — never an empty gauge. */
+  satisfaction?: SegmentSatisfaction;
+  sources?: readonly SourceRow[];
+  /** Multi-product markers (0.2/3.2): absent in single-product orgs. */
+  sharedAcrossProducts?: boolean;
+  alsoServedBy?: readonly ProductRef[];
+  openThread: DeepDiveThread | null;
+  filedThreads: readonly FiledThreadRef[];
+}
+
+// ---------------------------------------------------------------------------
+// Customers — log-feedback flow (spec part 2)
+// ---------------------------------------------------------------------------
+
+export type FeedbackFilingResult =
+  | { kind: "matched"; themeId: string; themeName: string; ordinal: string }
+  | { kind: "unfiled"; totalThemes: number; unfiledCount: number }
+  | { kind: "held" } // agents paused — kept safe, matched later
+  | { kind: "filed" }; // saved; matching still running (live mode)
+
+export interface LogFeedbackState {
+  open: boolean;
+  /** The verbatim. This field alone is enough to file. */
+  draft: string;
+  who?: string;
+  where?: string;
+  when?: string;
+  /** Opened from a theme Object ("Log another mention"). */
+  presetThemeId?: string;
+  /** Opened from a segment Object (section-7 invitation). */
+  presetSegmentId?: string;
+  /** The 2.3 result line; fades after the next navigation. */
+  result?: FeedbackFilingResult;
+  /** A save failure — the draft is restored, nothing is lost. */
+  error?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Competitors — Object view with an open deep-dive Thread
 // ---------------------------------------------------------------------------
 
@@ -626,7 +913,13 @@ export type MockScenarioKey =
   | "settings-trial-ending"
   | "settings-reading-only"
   | "settings-paused"
-  | "settings-minimal";
+  | "settings-minimal"
+  // Customers module scenarios. The populated dataset already carries the
+  // rich/forming/fading themes, unfiled pool, thin-evidence persona,
+  // owner-provided segment, undated mined item and old-dated review states.
+  | "customers-day-one"
+  | "customers-proposals"
+  | "customers-adoption";
 
 export interface AppState {
   productName: string;
@@ -651,6 +944,19 @@ export interface AppState {
   competitorAddFlow: AddFlowState;
   /** Onboarding-deferred proposals for the day-one variant (spec 2.5). */
   onboardingProposals: readonly OnboardingCompetitorProposal[] | null;
+  // Customers module (customers-module-spec)
+  customersOverview: CustomersOverview | null;
+  /** Theme Objects by stable ID. */
+  themes: Readonly<Record<string, ThemeObject>>;
+  /** Segment Objects by facet ID. */
+  segments: Readonly<Record<string, SegmentObject>>;
+  feedbackFlow: LogFeedbackState;
+  /** Theme/segment ids with a live refresh run — drives the elapsed stamps. */
+  customersChecking: readonly { id: string; elapsedS: number }[];
+  /** Onboarding-proposed segments for the day-one variant (spec 2.4). */
+  segmentProposals: readonly OnboardingCompetitorProposal[] | null;
+  /** An adoption card awaiting review (spec 3.4). */
+  segmentAdoption: SegmentAdoptionProposal | null;
   /** Settings page state — null until the live provider has loaded it. */
   settings: SettingsState | null;
   /** No LLM key at all — agents paused globally (spec 5.3). */

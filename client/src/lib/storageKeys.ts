@@ -11,3 +11,7 @@ export function competitorsViewKey(productId: string): string {
 export function competitorsSeenChangesKey(productId: string): string {
   return `discoveree.${productId}.competitors.seenChanges`;
 }
+
+export function customersSeenEntriesKey(productId: string): string {
+  return `discoveree.${productId}.customers.seenEntries`;
+}

@@ -14,7 +14,7 @@ import { useTheme } from "@/state/theme";
 
 function useBreadcrumb(): ReactNode {
   const [location] = useLocation();
-  const { competitors } = useAppState();
+  const { competitors, themes, segments } = useAppState();
   const productHref = useProductHref();
 
   if (location.startsWith("/products/new")) {
@@ -38,6 +38,30 @@ function useBreadcrumb(): ReactNode {
       );
     }
     return "Competitors";
+  }
+  const customersObjectMatch =
+    /^\/customers\/(themes|segments)\/([^/]+)/.exec(subpath);
+  if (customersObjectMatch) {
+    const pool =
+      customersObjectMatch[1] === "themes"
+        ? Object.values(themes)
+        : Object.values(segments);
+    const object = pool.find(
+      (candidate) =>
+        (candidate.id.split(":").pop() ?? candidate.id) ===
+        customersObjectMatch[2],
+    );
+    if (object) {
+      return (
+        <>
+          <Link href={productHref("/customers")} className="hover:text-body">
+            Customers
+          </Link>{" "}
+          · {object.name}
+        </>
+      );
+    }
+    return "Customers";
   }
   const match = moduleRegistry.find((module) =>
     module.path === "/" ? subpath === "/" : subpath.startsWith(module.path),

@@ -17,6 +17,8 @@ export function VerifiedStamp({
   agentsPaused,
   onCheck,
   onRetry,
+  verb = "verified",
+  checkingLabel = "checking now",
 }: {
   verifiedAgo: string;
   stale?: boolean | undefined;
@@ -29,13 +31,17 @@ export function VerifiedStamp({
   agentsPaused?: boolean | undefined;
   onCheck: () => void;
   onRetry?: (() => void) | undefined;
+  /** Themes say "refreshed"; segments and competitors say "verified". */
+  verb?: "verified" | "refreshed" | undefined;
+  /** Themes read "refreshing" while their agent runs. */
+  checkingLabel?: "checking now" | "refreshing" | undefined;
 }) {
   const [pausedNote, setPausedNote] = useState(false);
 
   if (checkingElapsedS !== undefined) {
     return (
       <span className="whitespace-nowrap font-mono text-xs tabular-nums text-teal-deep">
-        checking now · {formatElapsed(checkingElapsedS)}
+        {checkingLabel} · {formatElapsed(checkingElapsedS)}
       </span>
     );
   }
@@ -96,7 +102,7 @@ export function VerifiedStamp({
         type="button"
         onClick={handleClick}
         className="group/stamp whitespace-nowrap text-right font-mono text-xs tabular-nums"
-        aria-label="Check this competitor now"
+        aria-label="Run the refresh agent now"
       >
         <span
           className={[
@@ -104,7 +110,7 @@ export function VerifiedStamp({
             stale ? "text-amber-600 dark:text-amber-400" : "text-faint",
           ].join(" ")}
         >
-          verified {verifiedAgo}
+          {verb} {verifiedAgo}
         </span>
         <span className="hidden text-teal-deep group-hover/stamp:inline">
           {" "}

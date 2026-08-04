@@ -11,6 +11,7 @@ import type {
   LlmKeyRow,
   ModuleId,
   ProviderId,
+  RichSegment,
   ThreatWord,
 } from "@/mock/types";
 
@@ -119,11 +120,31 @@ export interface ServerChange {
   detectedAt: string;
 }
 
+/** ADR 004 §6.4 — the review block on the competitor detail payload. */
+export interface ServerCompetitorReviews {
+  averageRating: number | null;
+  totalCount: number | null;
+  platforms: string[];
+  positiveThemes: string[];
+  negativeThemes: string[];
+  quotes: {
+    text: string;
+    source: string;
+    sourceUrl: string | null;
+    sentiment?: number | null;
+    date: string | null;
+    /** Unverifiable quotes are stored but flagged — never dressed up. */
+    verified?: boolean;
+  }[];
+}
+
 export interface ServerCompetitorDetail extends ServerCompetitorCard {
   keyDifferentiators: { text: string; sourceUrl: string | null }[];
   keyFeatures: { feature: string; sourceUrl: string | null }[];
   markets: { market: string; sourceUrl: string | null }[];
   summarySourceUrl: string | null;
+  /** Absent until the reviews sprint's server serves it (ADR 004 §6.4). */
+  reviews?: ServerCompetitorReviews | null;
 }
 
 export interface ServerActiveRun {
@@ -556,6 +577,43 @@ export function objectFromDetail(
   }
   if (row.change?.unseen) {
     object.changeUnseen = true;
+  }
+
+  // ADR 004 §6.4 crossover: "What buyers say" lights up when the server
+  // serves the reviews block. Unverified quotes are excluded from display
+  // (stored server-side, never dressed as verifiable evidence).
+  const reviews = detail.reviews;
+  if (reviews && reviews.totalCount !== null && reviews.totalCount > 0) {
+    const quotes = reviews.quotes
+      .filter((quote) => quote.verified !== false)
+      .slice(0, 3)
+      .map((quote, index) => ({
+        id: `review:${detail.id}:${index}`,
+        text: quote.text,
+        attribution: quote.date
+          ? `${quote.source} · ${shortDateOf(quote.date) || quote.date}`
+          : `${quote.source} · date unknown`,
+        ...(quote.sourceUrl ? { sourceId: quote.sourceUrl } : {}),
+      }));
+    if (quotes.length > 0 || detail.sentiment !== null) {
+      const line: RichSegment[] = [];
+      if (detail.sentiment !== null) {
+        line.push({ text: "Sentiment " });
+        line.push({ text: String(detail.sentiment), tone: "mono" });
+        line.push({ text: " across " });
+        line.push({ text: String(reviews.totalCount), tone: "mono" });
+        line.push({ text: " reviews" });
+      } else {
+        // The mean never renders without its basis; the count stands alone.
+        line.push({ text: String(reviews.totalCount), tone: "mono" });
+        line.push({ text: " reviews mined" });
+      }
+      if (reviews.platforms.length > 0) {
+        line.push({ text: ` on ${joinNames(reviews.platforms)}` });
+      }
+      line.push({ text: "." });
+      object.reviewEvidence = { line, quotes };
+    }
   }
   return object;
 }

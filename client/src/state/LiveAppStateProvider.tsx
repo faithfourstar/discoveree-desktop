@@ -24,10 +24,23 @@ import {
   type ServerLlmKeysView,
   type ServerProduct,
 } from "@/lib/api";
+import {
+  composeCustomers,
+  customersApi,
+  enrichNoticeFrom,
+  fitToServer,
+  typeToServer,
+  type ServerEvidenceStatus,
+  type ServerFeedbackEntry,
+  type ServerSegmentCard,
+  type ServerSegmentDetail,
+  type ServerTheme,
+} from "@/lib/customersApi";
 import { parseProductId, productBase } from "@/lib/productUrl";
 import {
   competitorsSeenChangesKey,
   competitorsViewKey,
+  customersSeenEntriesKey,
 } from "@/lib/storageKeys";
 import {
   buildLede,
@@ -42,6 +55,7 @@ import {
   makeMask,
   normaliseLicenceKey,
 } from "@/mock/settings";
+import { ordinal } from "@/mock/customers";
 import type {
   AboutInfo,
   AddStage,
@@ -51,6 +65,7 @@ import type {
   CompetitorRow,
   LicenceState,
   LlmKeyRow,
+  LogFeedbackState,
   ProviderId,
   SettingsState,
 } from "@/mock/types";
@@ -108,6 +123,35 @@ function loadSeenChangeIds(productId: string | null): Set<string> {
   }
 }
 
+function loadCustomersSeen(productId: string | null): Set<string> {
+  if (!productId) {
+    return new Set();
+  }
+  try {
+    const raw = window.localStorage.getItem(customersSeenEntriesKey(productId));
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    return new Set(
+      Array.isArray(parsed)
+        ? parsed.filter((id): id is string => typeof id === "string")
+        : [],
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function persistCustomersSeen(
+  productId: string | null,
+  ids: ReadonlySet<string>,
+): void {
+  if (productId) {
+    window.localStorage.setItem(
+      customersSeenEntriesKey(productId),
+      JSON.stringify([...ids]),
+    );
+  }
+}
+
 function persistSeenChangeIds(
   productId: string | null,
   ids: ReadonlySet<string>,
@@ -152,6 +196,15 @@ function makeLiveBaseState(): AppState {
     competitors: {},
     competitorAddFlow: { ...initialAddFlow },
     onboardingProposals: null,
+    // Customers module — live wiring lands with the 3b server (ADR 004 §6);
+    // until then the module renders its day-one state in live mode.
+    customersOverview: null,
+    themes: {},
+    segments: {},
+    feedbackFlow: { open: false, draft: "" },
+    customersChecking: [],
+    segmentProposals: null,
+    segmentAdoption: null,
     settings: null,
     agentsPaused: false,
     justVerifiedId: null,
@@ -208,6 +261,40 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
   const cardsRef = useRef<ServerCompetitorCard[]>([]);
   const feedRef = useRef<ServerFeedChange[]>([]);
   const seenRef = useRef<Set<string>>(loadSeenChangeIds(activeProductId));
+
+  // Customers module (ADR 004 §6)
+  const customersDataRef = useRef<{
+    segments: ServerSegmentCard[];
+    themes: ServerTheme[];
+    unfiledCount: number;
+    entries: ServerFeedbackEntry[];
+    details: Map<string, ServerSegmentDetail>;
+  }>({ segments: [], themes: [], unfiledCount: 0, entries: [], details: new Map() });
+  const customersSeenRef = useRef<Set<string>>(
+    loadCustomersSeen(activeProductId),
+  );
+  /**
+   * Live customers runs, keyed by stamp target (segment id for enrich, the
+   * initiating theme id for aggregate) or `run:<kind>` for product-wide runs
+   * adopted from the server. Elapsed stamps derive from the server's
+   * startedAt once the run is seen there.
+   */
+  const customersRunsRef = useRef<
+    Map<
+      string,
+      {
+        kind: "collect" | "aggregate" | "enrich";
+        stampId?: string;
+        startedAtMs: number;
+        seenOnServer: boolean;
+        agentLabel?: string;
+      }
+    >
+  >(new Map());
+  const customersNoticesRef = useRef<Map<string, string>>(new Map());
+  const customersRenamedRef = useRef<Map<string, string>>(new Map());
+  const customersPollTimerRef = useRef<number | null>(null);
+  const customersTickTimerRef = useRef<number | null>(null);
   const pendingRunsRef = useRef<Map<string, PendingRun>>(new Map());
   const serverActiveRef = useRef<ServerActiveRun | null>(null);
   const proposalRunRef = useRef<ProposalRun | null>(null);
@@ -710,6 +797,9 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         feedRef.current = changesRes.changes;
         serverActiveRef.current = activeRes;
         recompose();
+        // Customers loads in parallel with its own error handling — a
+        // failure there leaves the module in its day-one state.
+        void loadCustomers(active.id);
         if (shouldPoll()) {
           ensurePolling();
         }
@@ -744,6 +834,18 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
       quietSuffixRef.current.clear();
       detailLoadedRef.current.clear();
       seenRef.current = loadSeenChangeIds(productId);
+      stopCustomersTimers();
+      customersRunsRef.current.clear();
+      customersNoticesRef.current.clear();
+      customersRenamedRef.current.clear();
+      customersDataRef.current = {
+        segments: [],
+        themes: [],
+        unfiledCount: 0,
+        entries: [],
+        details: new Map(),
+      };
+      customersSeenRef.current = loadCustomersSeen(productId);
       setState((prev) => ({
         ...prev,
         productName:
@@ -752,13 +854,331 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         competitorsOverview: null,
         competitors: {},
         competitorAddFlow: { ...initialAddFlow },
+        customersOverview: null,
+        themes: {},
+        segments: {},
+        feedbackFlow: { open: false, draft: "" },
+        customersChecking: [],
         justVerifiedId: null,
         modules: {
           ...prev.modules,
           competitors: { ...prev.modules.competitors, populated: false },
+          customers: { ...prev.modules.customers, populated: false },
         },
       }));
       void loadAll();
+    };
+
+    // ── Customers (ADR 004 §6) ────────────────────────────────────────────
+
+    const recomposeCustomers = () => {
+      if (!mountedRef.current) {
+        return;
+      }
+      const data = customersDataRef.current;
+      // The part-5 crossover chip resolves through the competitor cards
+      // (own-product feedback with competitorEntityId, isCompetitor false).
+      const competitorsByEntityId = new Map(
+        cardsRef.current
+          .filter(
+            (card): card is typeof card & { entityId: string } =>
+              typeof card.entityId === "string",
+          )
+          .map((card) => [
+            card.entityId,
+            { id: card.id, name: card.name },
+          ]),
+      );
+      const composed = composeCustomers({
+        ...data,
+        seenEntryIds: customersSeenRef.current,
+        competitorsByEntityId,
+      });
+      for (const [id, oldName] of customersRenamedRef.current) {
+        const theme = composed.themes[id];
+        if (theme) {
+          composed.themes[id] = { ...theme, renamedFrom: oldName };
+        }
+      }
+      for (const [id, notice] of customersNoticesRef.current) {
+        const segment = composed.segments[id];
+        if (segment) {
+          composed.segments[id] = { ...segment, enrichNotice: notice };
+        }
+      }
+      const populated =
+        data.themes.length > 0 ||
+        data.segments.length > 0 ||
+        data.entries.length > 0;
+      const now = Date.now();
+      const runs = [...customersRunsRef.current.values()];
+      const checking = runs
+        .filter(
+          (run): run is typeof run & { stampId: string } =>
+            run.stampId !== undefined,
+        )
+        .map((run) => ({
+          id: run.stampId,
+          elapsedS: Math.max(0, Math.floor((now - run.startedAtMs) / 1000)),
+        }));
+      setState((prev) => {
+        const next: AppState = {
+          ...prev,
+          customersOverview: populated ? composed.overview : null,
+          themes: composed.themes,
+          segments: composed.segments,
+          customersChecking: checking,
+          modules: {
+            ...prev.modules,
+            customers: { ...prev.modules.customers, populated },
+          },
+        };
+        // Product-wide and targeted runs both narrate in the footer; the
+        // competitors segment keeps priority while its own runs are live.
+        const competitorsBusy =
+          (prev.competitorsOverview?.checking ?? []).length > 0;
+        if (runs.length > 0 && !competitorsBusy) {
+          const first = runs[0];
+          if (first) {
+            const label =
+              first.agentLabel ??
+              (first.kind === "enrich" ? "enriching segment" : "reading feedback");
+            const longestS = Math.floor(
+              runs.reduce(
+                (max, run) => Math.max(max, now - run.startedAtMs),
+                0,
+              ) / 1000,
+            );
+            const minutes = Math.floor(longestS / 60);
+            const seconds = String(longestS % 60).padStart(2, "0");
+            next.footer = {
+              ...next.footer,
+              agents: `Agents · ${label} · ${minutes}:${seconds}`,
+              agentsLive: true,
+            };
+          }
+        } else if (
+          runs.length === 0 &&
+          !competitorsBusy &&
+          prev.footer.agentsLive
+        ) {
+          next.footer = {
+            ...next.footer,
+            ...composeFooterAgents([]),
+          };
+        }
+        return next;
+      });
+    };
+
+    const loadCustomers = async (productId: string) => {
+      try {
+        const [segRes, themesRes, feedbackRes] = await Promise.all([
+          customersApi.listSegments(productId),
+          customersApi.listThemes(productId),
+          customersApi.listFeedback(productId),
+        ]);
+        if (activeProductIdRef.current !== productId) {
+          return;
+        }
+        const tracked = segRes.segments.filter(
+          (card) => card.status !== "proposed",
+        );
+        const detailPairs = await Promise.all(
+          tracked.map(async (card) => {
+            try {
+              const res = await customersApi.getSegment(productId, card.id);
+              return [card.id, res.segment] as const;
+            } catch {
+              return null;
+            }
+          }),
+        );
+        if (activeProductIdRef.current !== productId) {
+          return;
+        }
+        customersDataRef.current = {
+          segments: segRes.segments,
+          themes: themesRes.themes,
+          unfiledCount: themesRes.unfiledCount,
+          entries: feedbackRes.feedback,
+          details: new Map(
+            detailPairs.filter(
+              (pair): pair is readonly [string, ServerSegmentDetail] =>
+                pair !== null,
+            ),
+          ),
+        };
+        recomposeCustomers();
+      } catch {
+        // The customers slice stays empty; the module renders its day-one
+        // state. The main offline path (loadAll) owns the retry loop.
+      }
+    };
+
+    /** Refetch the lists + one segment detail after a mutation settles. */
+    const refreshCustomers = async (segmentDetailId?: string) => {
+      const productId = activeProductIdRef.current;
+      if (!productId) {
+        return;
+      }
+      try {
+        const [segRes, themesRes, feedbackRes] = await Promise.all([
+          customersApi.listSegments(productId),
+          customersApi.listThemes(productId),
+          customersApi.listFeedback(productId),
+        ]);
+        if (activeProductIdRef.current !== productId) {
+          return;
+        }
+        const data = customersDataRef.current;
+        data.segments = segRes.segments;
+        data.themes = themesRes.themes;
+        data.unfiledCount = themesRes.unfiledCount;
+        data.entries = feedbackRes.feedback;
+        if (segmentDetailId) {
+          try {
+            const res = await customersApi.getSegment(
+              productId,
+              segmentDetailId,
+            );
+            data.details.set(segmentDetailId, res.segment);
+          } catch {
+            data.details.delete(segmentDetailId);
+          }
+        }
+        recomposeCustomers();
+      } catch {
+        // Transient — the next action or poll retries.
+      }
+    };
+
+    const stopCustomersTimers = () => {
+      if (customersPollTimerRef.current !== null) {
+        window.clearInterval(customersPollTimerRef.current);
+        customersPollTimerRef.current = null;
+      }
+      if (customersTickTimerRef.current !== null) {
+        window.clearInterval(customersTickTimerRef.current);
+        customersTickTimerRef.current = null;
+      }
+    };
+
+    /**
+     * The runs/active pattern (competitors idiom): poll the server's single
+     * live-run view while anything is running; adopt runs we did not start;
+     * settle an entry when the server stops reporting it. A just-fired run
+     * gets a short grace before its absence means "already finished".
+     */
+    const customersPollOnce = async () => {
+      const productId = activeProductIdRef.current;
+      if (!productId || customersRunsRef.current.size === 0) {
+        stopCustomersTimers();
+        return;
+      }
+      try {
+        const activeRes = await customersApi.getActiveRun(productId);
+        if (activeProductIdRef.current !== productId) {
+          return;
+        }
+        const matchesEntry = (entry: {
+          kind: "collect" | "aggregate" | "enrich";
+          stampId?: string;
+        }): boolean => {
+          if (!activeRes.active || !activeRes.kind) {
+            return false;
+          }
+          if (activeRes.kind === "enrich") {
+            return (
+              entry.kind === "enrich" && entry.stampId === activeRes.targetId
+            );
+          }
+          return entry.kind === activeRes.kind;
+        };
+
+        if (activeRes.active && activeRes.kind) {
+          const matched = [...customersRunsRef.current.values()].find(
+            matchesEntry,
+          );
+          if (matched) {
+            matched.seenOnServer = true;
+            if (activeRes.startedAt) {
+              matched.startedAtMs = new Date(activeRes.startedAt).getTime();
+            }
+            if (activeRes.agentLabel) {
+              matched.agentLabel = activeRes.agentLabel;
+            }
+          } else {
+            // A run we did not start (scheduled/background) — adopt it.
+            const key = activeRes.targetId ?? `run:${activeRes.kind}`;
+            customersRunsRef.current.set(key, {
+              kind: activeRes.kind,
+              ...(activeRes.targetId ? { stampId: activeRes.targetId } : {}),
+              startedAtMs: activeRes.startedAt
+                ? new Date(activeRes.startedAt).getTime()
+                : Date.now(),
+              seenOnServer: true,
+              ...(activeRes.agentLabel
+                ? { agentLabel: activeRes.agentLabel }
+                : {}),
+            });
+          }
+        }
+
+        const GRACE_MS = 8000;
+        for (const [key, entry] of [...customersRunsRef.current.entries()]) {
+          const reported = matchesEntry(entry);
+          const age = Date.now() - entry.startedAtMs;
+          if (!reported && (entry.seenOnServer || age > GRACE_MS)) {
+            customersRunsRef.current.delete(key);
+            await refreshCustomers(
+              entry.kind === "enrich" ? entry.stampId : undefined,
+            );
+            if (entry.stampId) {
+              markJustVerified(entry.stampId);
+            }
+          }
+        }
+      } catch {
+        // Transient — the next cycle retries; entries keep their stamps.
+      }
+      recomposeCustomers();
+      if (customersRunsRef.current.size === 0) {
+        stopCustomersTimers();
+      }
+    };
+
+    const ensureCustomersTimers = () => {
+      if (customersTickTimerRef.current === null) {
+        customersTickTimerRef.current = window.setInterval(() => {
+          if (customersRunsRef.current.size > 0) {
+            recomposeCustomers();
+          }
+        }, 1000);
+      }
+      if (customersPollTimerRef.current === null) {
+        customersPollTimerRef.current = window.setInterval(() => {
+          void customersPollOnce();
+        }, 4000);
+      }
+    };
+
+    const startCustomersRun = (
+      kind: "collect" | "aggregate" | "enrich",
+      stampId?: string,
+    ) => {
+      const key = stampId ?? `run:${kind}`;
+      if (stampId) {
+        customersNoticesRef.current.delete(stampId);
+      }
+      customersRunsRef.current.set(key, {
+        kind,
+        ...(stampId ? { stampId } : {}),
+        startedAtMs: Date.now(),
+        seenOnServer: false,
+      });
+      recomposeCustomers();
+      ensureCustomersTimers();
     };
 
     // ── Shared action helpers ─────────────────────────────────────────────
@@ -1842,6 +2262,364 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
         void pollOnce();
       },
       trackOnboardingProposals: () => undefined,
+      // ── Customers (ADR 004 §6) ───────────────────────────────────────────
+      openFeedbackFlow: (preset) => {
+        setState((prev) => {
+          const flow: LogFeedbackState = { ...prev.feedbackFlow, open: true };
+          delete flow.result;
+          delete flow.presetThemeId;
+          delete flow.presetSegmentId;
+          if (preset?.themeId) {
+            flow.presetThemeId = preset.themeId;
+          }
+          if (preset?.segmentId) {
+            flow.presetSegmentId = preset.segmentId;
+          }
+          return { ...prev, feedbackFlow: flow };
+        });
+      },
+      closeFeedbackFlow: () => {
+        setState((prev) => ({
+          ...prev,
+          feedbackFlow: { ...prev.feedbackFlow, open: false },
+        }));
+      },
+      setFeedbackField: (field, value) => {
+        setState((prev) => {
+          const flow: LogFeedbackState = {
+            ...prev.feedbackFlow,
+            [field]: value,
+          };
+          delete flow.error;
+          return { ...prev, feedbackFlow: flow };
+        });
+      },
+      fileFeedback: () => {
+        const productId = activeProductIdRef.current;
+        const flow = stateRef.current.feedbackFlow;
+        const text = flow.draft.trim();
+        if (!productId || !text) {
+          return;
+        }
+        // Date discipline: only send a parseable authored-at date; a
+        // malformed one is dropped (entry time approximates occurrence)
+        // rather than blocking the verbatim on a 400.
+        let sourceCreatedAt: string | undefined;
+        if (flow.when?.trim() && flow.when.trim().toLowerCase() !== "today") {
+          const parsed = new Date(flow.when.trim());
+          if (!Number.isNaN(parsed.getTime())) {
+            sourceCreatedAt = parsed.toISOString();
+          }
+        }
+        const presetTheme = flow.presetThemeId
+          ? customersDataRef.current.themes.find(
+              (theme) => theme.id === flow.presetThemeId,
+            )
+          : undefined;
+        void (async () => {
+          try {
+            const { feedback } = await customersApi.createFeedback(productId, {
+              quotedText: text,
+              ...(flow.where ? { sourceName: flow.where } : {}),
+              ...(presetTheme ? { topic: presetTheme.themeName } : {}),
+              ...(sourceCreatedAt ? { sourceCreatedAt } : {}),
+            });
+            customersDataRef.current.entries = [
+              feedback,
+              ...customersDataRef.current.entries,
+            ];
+            customersDataRef.current.unfiledCount += 1;
+            setState((prev) => ({
+              ...prev,
+              feedbackFlow: {
+                open: false,
+                draft: "",
+                result: { kind: "filed" },
+              },
+            }));
+            recomposeCustomers();
+
+            // Matching: run the aggregation pass and watch for the entry to
+            // file; settle honestly if it does not (spec 2.3).
+            let held = false;
+            try {
+              await customersApi.aggregateThemes(productId);
+            } catch {
+              held = true;
+            }
+            const started = Date.now();
+            while (!held && Date.now() - started < 20_000) {
+              await new Promise((resolve) => window.setTimeout(resolve, 3000));
+              if (activeProductIdRef.current !== productId) {
+                return;
+              }
+              const themesRes = await customersApi.listThemes(productId);
+              customersDataRef.current.themes = themesRes.themes;
+              customersDataRef.current.unfiledCount = themesRes.unfiledCount;
+              const matched = themesRes.themes.find((theme) =>
+                theme.feedbackEntryIds.includes(feedback.id),
+              );
+              if (matched) {
+                customersSeenRef.current.add(feedback.id);
+                persistCustomersSeen(productId, customersSeenRef.current);
+                setState((prev) => ({
+                  ...prev,
+                  feedbackFlow: {
+                    ...prev.feedbackFlow,
+                    result: {
+                      kind: "matched",
+                      themeId: matched.id,
+                      themeName: matched.themeName,
+                      ordinal: ordinal(matched.mentionCount),
+                    },
+                  },
+                }));
+                recomposeCustomers();
+                return;
+              }
+            }
+            setState((prev) => ({
+              ...prev,
+              feedbackFlow: {
+                ...prev.feedbackFlow,
+                result: held
+                  ? { kind: "held" }
+                  : {
+                      kind: "unfiled",
+                      totalThemes: customersDataRef.current.themes.filter(
+                        (theme) => theme.status !== "dismissed",
+                      ).length,
+                      unfiledCount: customersDataRef.current.unfiledCount,
+                    },
+              },
+            }));
+            recomposeCustomers();
+          } catch (error) {
+            const line =
+              error instanceof ApiError
+                ? error.message
+                : "We couldn’t reach the local server — the feedback was not saved. Your words are still here.";
+            // The draft is restored: a failed save never loses the verbatim.
+            setState((prev) => {
+              const flow: LogFeedbackState = {
+                ...prev.feedbackFlow,
+                open: true,
+                draft: text,
+                error: line,
+              };
+              delete flow.result;
+              return { ...prev, feedbackFlow: flow };
+            });
+          }
+        })();
+      },
+      clearFeedbackResult: () => {
+        setState((prev) => {
+          if (!prev.feedbackFlow.result) {
+            return prev;
+          }
+          const flow = { ...prev.feedbackFlow };
+          delete flow.result;
+          return { ...prev, feedbackFlow: flow };
+        });
+      },
+      refreshTheme: (id) => {
+        const productId = activeProductIdRef.current;
+        if (!productId || customersRunsRef.current.has(id)) {
+          return;
+        }
+        void (async () => {
+          try {
+            await customersApi.aggregateThemes(productId);
+          } catch {
+            // 409 (already running) still means a pass is under way — poll.
+          }
+          startCustomersRun("aggregate", id);
+        })();
+      },
+      markThemeSeen: (id) => {
+        const theme = customersDataRef.current.themes.find(
+          (candidate) => candidate.id === id,
+        );
+        customersRenamedRef.current.delete(id);
+        if (theme) {
+          let added = false;
+          for (const entryId of theme.feedbackEntryIds) {
+            if (!customersSeenRef.current.has(entryId)) {
+              customersSeenRef.current.add(entryId);
+              added = true;
+            }
+          }
+          if (added) {
+            persistCustomersSeen(
+              activeProductIdRef.current,
+              customersSeenRef.current,
+            );
+          }
+        }
+        recomposeCustomers();
+      },
+      renameTheme: (id, name) => {
+        const productId = activeProductIdRef.current;
+        const trimmed = name.trim();
+        const theme = customersDataRef.current.themes.find(
+          (candidate) => candidate.id === id,
+        );
+        if (!productId || !trimmed || !theme || theme.themeName === trimmed) {
+          return;
+        }
+        void (async () => {
+          try {
+            const res = await customersApi.patchTheme(productId, id, {
+              themeName: trimmed,
+            });
+            customersRenamedRef.current.set(id, theme.themeName);
+            customersDataRef.current.themes =
+              customersDataRef.current.themes.map((candidate) =>
+                candidate.id === id ? res.theme : candidate,
+              );
+            recomposeCustomers();
+          } catch {
+            // Leave the name as the server has it.
+          }
+        })();
+      },
+      mergeThemes: (survivorId, absorbedId) => {
+        const productId = activeProductIdRef.current;
+        if (!productId) {
+          return;
+        }
+        void (async () => {
+          try {
+            await customersApi.mergeThemes(productId, survivorId, absorbedId);
+            await refreshCustomers();
+          } catch {
+            // The dialogue closed; state reconciles on the next fetch.
+          }
+        })();
+      },
+      retireTheme: (id) => {
+        const productId = activeProductIdRef.current;
+        if (!productId) {
+          return;
+        }
+        void (async () => {
+          try {
+            await customersApi.patchTheme(productId, id, {
+              status: "dismissed",
+            });
+            await refreshCustomers();
+          } catch {
+            // Reconciles on the next fetch.
+          }
+        })();
+      },
+      checkSegment: (id) => {
+        const productId = activeProductIdRef.current;
+        if (!productId || customersRunsRef.current.has(id)) {
+          return;
+        }
+        // The honest gate: when the evidence pool is below every threshold,
+        // render the invitation instead of firing a doomed request.
+        const card = customersDataRef.current.segments.find(
+          (candidate) => candidate.id === id,
+        );
+        if (card && card.evidenceStatus.sufficientFor.length === 0) {
+          customersNoticesRef.current.set(
+            id,
+            enrichNoticeFrom(card.evidenceStatus),
+          );
+          recomposeCustomers();
+          return;
+        }
+        void (async () => {
+          try {
+            await customersApi.enrichSegment(productId, id);
+            startCustomersRun("enrich", id);
+          } catch (error) {
+            if (error instanceof ApiError && error.status === 422) {
+              const payload = error.payload as {
+                evidenceStatus?: ServerEvidenceStatus;
+              } | null;
+              if (payload?.evidenceStatus) {
+                customersNoticesRef.current.set(
+                  id,
+                  enrichNoticeFrom(payload.evidenceStatus),
+                );
+                recomposeCustomers();
+              }
+            }
+          }
+        })();
+      },
+      markSegmentSeen: () => undefined,
+      setSegmentFit: (id, fit) => {
+        const productId = activeProductIdRef.current;
+        if (!productId) {
+          return;
+        }
+        void (async () => {
+          try {
+            const res = await customersApi.patchSegment(productId, id, {
+              icpFit: fitToServer(fit),
+            });
+            customersDataRef.current.segments =
+              customersDataRef.current.segments.map((candidate) =>
+                candidate.id === id ? res.segment : candidate,
+              );
+            recomposeCustomers();
+            void refreshCustomers(id);
+          } catch {
+            // Reconciles on the next fetch.
+          }
+        })();
+      },
+      setSegmentType: (id, type) => {
+        const productId = activeProductIdRef.current;
+        if (!productId) {
+          return;
+        }
+        void (async () => {
+          try {
+            const res = await customersApi.patchSegment(productId, id, {
+              segmentType: typeToServer(type),
+            });
+            customersDataRef.current.segments =
+              customersDataRef.current.segments.map((candidate) =>
+                candidate.id === id ? res.segment : candidate,
+              );
+            recomposeCustomers();
+            void refreshCustomers(id);
+          } catch {
+            // Reconciles on the next fetch.
+          }
+        })();
+      },
+      removeSegment: (id) => {
+        const productId = activeProductIdRef.current;
+        if (!productId) {
+          return;
+        }
+        void (async () => {
+          try {
+            await customersApi.deleteSegment(productId, id);
+            customersDataRef.current.segments =
+              customersDataRef.current.segments.filter(
+                (candidate) => candidate.id !== id,
+              );
+            customersDataRef.current.details.delete(id);
+            recomposeCustomers();
+          } catch {
+            // Reconciles on the next fetch.
+          }
+        })();
+      },
+      // No live source for onboarding proposals / adoption yet: segment
+      // creation flows land with onboarding (the POST + adopted flag is
+      // served; the client flow is a later task).
+      addSegmentProposals: () => undefined,
+      acceptSegmentAdoption: () => undefined,
+      dismissSegmentAdoption: () => undefined,
       createProduct: ({ url }) => {
         const domain = normaliseDomain(url);
         if (!domain) {
@@ -1937,6 +2715,12 @@ export function LiveAppStateProvider({ children }: { children: ReactNode }) {
       }
       if (settingsRetryTimerRef.current !== null) {
         window.clearTimeout(settingsRetryTimerRef.current);
+      }
+      if (customersPollTimerRef.current !== null) {
+        window.clearInterval(customersPollTimerRef.current);
+      }
+      if (customersTickTimerRef.current !== null) {
+        window.clearInterval(customersTickTimerRef.current);
       }
       for (const timer of settingsTimersRef.current) {
         window.clearTimeout(timer);
